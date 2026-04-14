@@ -4,24 +4,30 @@
  *
  * WobblyBits — probabilistic computing chip
  *
- * Stage 1: TRNG wired up, raw random bytes on uo_out.
- *          P-bit array and SPI coupling matrix to follow.
+ * Stage 2: 4 p-bits with SPI-loadable coupling matrix.
+ *          Ring-oscillator TRNG drives sequential Gibbs sampling.
+ *          p-bit states appear on uo_out[3:0].
  *
  * Pinout:
- *   ui_in[0]  — run         (1 = TRNG running, 0 = paused)
+ *   ui_in[0]  — run         (1 = network running, 0 = paused)
  *   ui_in[1]  — step        (reserved, unused this stage)
- *   ui_in[2]  — trng_bypass (1 = freeze output register)
- *   uio[0]    — SPI_CS      (input, reserved)
- *   uio[1]    — SPI_MOSI    (input, reserved)
- *   uio[2]    — SPI_MISO    (output, reserved)
- *   uio[3]    — SPI_SCK     (input, reserved)
- *   uo_out    — live p-bit states (currently: raw TRNG byte)
+ *   ui_in[2]  — trng_bypass (1 = freeze p-bit updates for deterministic sim)
+ *   uio[0]    — SPI_CS      (input, active low)
+ *   uio[1]    — SPI_MOSI    (input)
+ *   uio[2]    — SPI_MISO    (output, tied 0 — write-only for now)
+ *   uio[3]    — SPI_SCK     (input)
+ *   uo_out[3:0] — live p-bit states (pbit0–pbit3)
+ *   uo_out[7:4] — reserved (tied 0)
+ *
+ * SPI loading (before asserting run):
+ *   Send 16-bit frames [addr_byte][data_byte].
+ *   addr[3:0] = J register index (0-15 = J[row*4+col], row-major).
+ *   data = 8-bit signed coupling weight.
+ *   J resets to ferromagnetic K=8 on rst_n, so chip works without SPI config.
  */
 
 `default_nettype none
 
-// Pass SIM_MODE=1 when building for simulation (add -DSIM_MODE to Makefile).
-// Physical synthesis leaves SIM_MODE=0 so ring oscillators are real.
 `ifdef SIM_MODE
   `define TRNG_SIM_MODE 1
 `else
@@ -39,11 +45,11 @@ module tt_um_Rats2012_WobblyBits (
     input  wire       rst_n
 );
 
-  wire run         = ui_in[0];
-  wire trng_bypass = ui_in[2];
+  // trng_bypass (ui_in[2]) pauses p-bit updates as well as TRNG.
+  wire run = ui_in[0] & ~ui_in[2];
 
-  // SPI pins: MISO (uio[2]) is output; CS/MOSI/SCK are inputs.
-  assign uio_out = 8'h00;
+  // MISO (uio[2]) is the only output; all other bidir pins are inputs.
+  assign uio_out = 8'h00;  // MISO tied 0 (write-only SPI)
   assign uio_oe  = 8'b0000_0100; // uio[2] = MISO as output
 
   // ---- TRNG ----------------------------------------------------------------
@@ -63,20 +69,42 @@ module tt_um_Rats2012_WobblyBits (
     .data_o   (trng_data)
   );
 
-  // ---- Output register -----------------------------------------------------
-  // Captures latest TRNG byte. Frozen when trng_bypass=1.
-  // TODO: replace with p-bit state register once p-bit array is implemented.
-  reg [7:0] rnd_reg;
+  // ---- SPI J-matrix loader -------------------------------------------------
+  wire        spi_wr_en;
+  wire  [3:0] spi_wr_addr;
+  wire  [7:0] spi_wr_data;
 
-  always @(posedge clk or negedge rst_n) begin
-    if (!rst_n)
-      rnd_reg <= 8'h00;
-    else if (trng_valid && !trng_bypass)
-      rnd_reg <= trng_data;
-  end
+  spi_j_slave spi (
+    .clk      (clk),
+    .rst_n    (rst_n),
+    .spi_cs_n (uio_in[0]),   // CS   active low
+    .spi_mosi (uio_in[1]),   // MOSI data in
+    .spi_sck  (uio_in[3]),   // SCK  serial clock
+    .wr_en    (spi_wr_en),
+    .wr_addr  (spi_wr_addr),
+    .wr_data  (spi_wr_data)
+  );
 
-  assign uo_out = rnd_reg;
+  // ---- P-bit array ---------------------------------------------------------
+  wire [3:0] pbit_states;
 
-  wire _unused = &{ena, uio_in, ui_in[7:3], ui_in[1], 1'b0};
+  pbit_array pbits (
+    .clk        (clk),
+    .rst_n      (rst_n),
+    .run        (run),
+    .trng_valid (trng_valid),
+    .trng_data  (trng_data),
+    .wr_en      (spi_wr_en),
+    .wr_addr    (spi_wr_addr),
+    .wr_data    (spi_wr_data),
+    .states     (pbit_states)
+  );
+
+  assign uo_out = {4'b0, pbit_states};
+
+  // uio_in[0]=SPI_CS, [1]=SPI_MOSI, [3]=SPI_SCK used by spi_j_slave.
+  // uio_in[2]=MISO input path (MISO is output-only, input path unused).
+  // uio_in[7:4] = spare.
+  wire _unused = &{ena, ui_in[7:3], ui_in[1], uio_in[7:4], uio_in[2], 1'b0};
 
 endmodule
