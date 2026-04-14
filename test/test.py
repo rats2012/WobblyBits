@@ -1,12 +1,19 @@
 # SPDX-FileCopyrightText: © 2026 WobblyBits
 # SPDX-License-Identifier: Apache-2.0
 
+import os
+
 import cocotb
 from cocotb.clock import Clock
 from cocotb.triggers import ClockCycles, RisingEdge
 
+# GL_TEST=1 is exported by the Makefile GL section.  In GL mode we skip
+# statistical tests (those belong at RTL level) and shorten functional tests
+# to avoid delta-cycle storms from the ring-oscillator netlist.
+GL_TEST = os.environ.get('GL_TEST') == '1'
 
-@cocotb.test()
+
+@cocotb.test(skip=GL_TEST)  # ring-osc delta-cycle storm; covered by RTL test
 async def test_trng_drives_pbits(dut):
     """
     Smoke test: TRNG is running and driving p-bit state changes.
@@ -16,6 +23,7 @@ async def test_trng_drives_pbits(dut):
     ferromagnetic coupling the initial flip probability is 12.5% per TRNG
     byte, so we wait 2500 clocks (>>8× the expected first-flip latency)
     and verify uo_out[3:0] has changed from its post-reset value of 0.
+    Skipped in GL mode — statistical TRNG behaviour is an RTL concern.
     """
     dut._log.info("Start — TRNG/p-bit smoke test")
 
@@ -68,15 +76,15 @@ async def test_trng_bypass_freezes_output(dut):
     dut.rst_n.value = 1
 
     dut.ui_in.value = 0b001  # run=1
-    await ClockCycles(dut.clk, 400)
+    await ClockCycles(dut.clk, 20 if GL_TEST else 400)  # GL: minimal warmup
 
     # Freeze
     dut.ui_in.value = 0b101  # run=1, bypass=1
     frozen_value = int(dut.uo_out.value)
     dut._log.info(f"Frozen at uo_out=0x{frozen_value:02x}")
 
-    # Run 200 more cycles — output must not change
-    for _ in range(200):
+    # Run 200 more cycles — output must not change (20 in GL to cut sim time)
+    for _ in range(20 if GL_TEST else 200):
         await ClockCycles(dut.clk, 1)
         assert int(dut.uo_out.value) == frozen_value, \
             f"uo_out changed while bypassed: {int(dut.uo_out.value):#04x} != {frozen_value:#04x}"
@@ -89,7 +97,8 @@ async def test_trng_bypass_freezes_output(dut):
 # ---------------------------------------------------------------------------
 
 async def _reset_and_run(dut, run_cycles):
-    """Helper: reset, then run for run_cycles clocks with run=1."""
+    """Helper: reset, then run for run_cycles clocks with run=1.
+    In GL mode caps at 100 cycles to limit ring-oscillator simulation events."""
     dut.ena.value = 1
     dut.ui_in.value = 0
     dut.uio_in.value = 0
@@ -97,16 +106,17 @@ async def _reset_and_run(dut, run_cycles):
     await ClockCycles(dut.clk, 10)
     dut.rst_n.value = 1
     dut.ui_in.value = 0b001  # run=1
-    await ClockCycles(dut.clk, run_cycles)
+    await ClockCycles(dut.clk, min(run_cycles, 100) if GL_TEST else run_cycles)
 
 
-@cocotb.test()
+@cocotb.test(skip=GL_TEST)  # needs 800 cycles; covered by RTL test
 async def test_pbit_states_on_output(dut):
     """
     P-bit states appear on uo_out[3:0].
 
     After reset all p-bits start at 0.  With run=1 and the TRNG producing
     bytes, at least one p-bit should flip to 1 within 800 clocks.
+    Skipped in GL mode — statistical liveness is an RTL concern.
     """
     dut._log.info("Start — p-bit output liveness test")
     clock = Clock(dut.clk, 40, unit="ns")
@@ -140,7 +150,7 @@ async def test_pbit_run_paused(dut):
     frozen = int(dut.uo_out.value) & 0x0F
     dut._log.info(f"Frozen p-bits at 0b{frozen:04b}")
 
-    for _ in range(300):
+    for _ in range(20 if GL_TEST else 300):  # GL: 20 cycles is sufficient
         await ClockCycles(dut.clk, 1)
         current = int(dut.uo_out.value) & 0x0F
         assert current == frozen, \
@@ -149,7 +159,7 @@ async def test_pbit_run_paused(dut):
     dut._log.info("Run/pause held correctly")
 
 
-@cocotb.test()
+@cocotb.test(skip=GL_TEST)  # Boltzmann statistics — RTL concern only
 async def test_pbit_ferromagnetic_alignment(dut):
     """
     Ferromagnetic Ising ground-state test.
@@ -192,7 +202,7 @@ def _ring_cut(s):
     return (b[0] ^ b[1]) + (b[1] ^ b[2]) + (b[2] ^ b[3]) + (b[3] ^ b[0])
 
 
-@cocotb.test()
+@cocotb.test(skip=GL_TEST)  # statistical + slow SPI load; covered by RTL test
 async def test_max_cut_4_ring(dut):
     """
     MAX-CUT on a 4-node ring — a real combinatorial optimisation problem.
@@ -357,7 +367,7 @@ async def _load_j_matrix(dut, k):
                 await _spi_write_j(dut, row, col, k)
 
 
-@cocotb.test()
+@cocotb.test(skip=GL_TEST)  # statistical assertion needs many cycles; RTL concern
 async def test_spi_strong_ferromagnet(dut):
     """
     SPI loading: write K=40 (stronger coupling than reset default K=8).
@@ -400,7 +410,7 @@ async def test_spi_strong_ferromagnet(dut):
         f"Strong ferromagnet alignment too low: {fraction:.1%} (expected >50%)"
 
 
-@cocotb.test()
+@cocotb.test(skip=GL_TEST)  # statistical assertion needs many cycles; RTL concern
 async def test_spi_uncoupled(dut):
     """
     SPI loading: write J=0 for all entries (completely decouple p-bits).
