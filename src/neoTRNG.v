@@ -197,12 +197,8 @@ module neoTRNG_cell #(
         // the CHECK pass, so the ring-oscillator loop is invisible to synth_check
         // while the real feedback topology is preserved in the mapped netlist.
         (* keep *) sky130_fd_sc_hd__inv_1 inv_cell (
-          .A   (inv_in[i]),
-          .Y   (inv_out[i]),
-          .VPWR(1'b1),
-          .VGND(1'b0),
-          .VPB (1'b1),
-          .VNB (1'b0)
+          .A (inv_in[i]),
+          .Y (inv_out[i])
         );
       end
 
