@@ -1,6 +1,14 @@
 ![](../../workflows/gds/badge.svg) ![](../../workflows/docs/badge.svg) ![](../../workflows/test/badge.svg) ![](../../workflows/fpga/badge.svg)
 
-# Tiny Tapeout Verilog Project Template
+## WobblyBits 
+
+WobblyBits is a probabilistic chip — a few p-bits (probabilistic bits) driven by
+hardware randomness from a bunch of on-chip ring oscillators.
+
+A p-bit is a device that fluctuates randomly between 0 and 1 with a _controllable-ish_ probability. It kinda between classical bit and a qubit, but should work at room temp.
+
+
+# Tiny Tapeout Verilog Project Template GENERIC YAP:
 
 - [Read the documentation for project](docs/info.md)
 
