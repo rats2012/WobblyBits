@@ -183,6 +183,121 @@ async def test_pbit_ferromagnetic_alignment(dut):
 
 
 # ---------------------------------------------------------------------------
+# MAX-CUT demo test
+# ---------------------------------------------------------------------------
+
+def _ring_cut(s):
+    """Number of ring edges (0-1-2-3-0) crossing the partition s (int, 4 bits)."""
+    b = [(s >> i) & 1 for i in range(4)]
+    return (b[0] ^ b[1]) + (b[1] ^ b[2]) + (b[2] ^ b[3]) + (b[3] ^ b[0])
+
+
+@cocotb.test()
+async def test_max_cut_4_ring(dut):
+    """
+    MAX-CUT on a 4-node ring — a real combinatorial optimisation problem.
+
+    Graph topology:  pbit0 ── pbit1 ── pbit2 ── pbit3 ── pbit0
+    All edge weights = 1.  MAX-CUT = 4 (all edges), achieved by the unique
+    bipartite 2-colouring: {pbit0, pbit2} vs {pbit1, pbit3}.
+    Optimal states: 0101 (int 5) and 1010 (int 10).
+
+    Ising encoding  (±1 spin convention):
+      J[i][j] = -40 for ring edges  → antiferromagnetic
+      J[i][j] =   0 for non-edges (0,2) and (1,3)
+
+    Energy landscape (K=40):
+      cut = 4  →  E = -160  ← ground state (MAX-CUT solution)
+      cut = 2  →  E =    0  ← 12 sub-optimal states
+      cut = 0  →  E = +160  ← worst states (0000 / 1111)
+
+    In each ground state every bit has ≥81.25 % probability of staying correct
+    on each Gibbs step (thresh ∈ {48, 208}).
+
+    Assertions:
+      • ground-state fraction > 25 %  (baseline random = 2/16 = 12.5 %)
+      • high-energy states (0000, 1111) < 8 % combined
+      • the single most-sampled state is one of the two ground states
+    """
+    dut._log.info("Start — MAX-CUT 4-ring test")
+    clock = Clock(dut.clk, 40, unit="ns")
+    cocotb.start_soon(clock.start())
+
+    # Reset
+    dut.ena.value = 1
+    dut.ui_in.value  = 0b000
+    dut.uio_in.value = _SPI_IDLE
+    dut.rst_n.value  = 0
+    await ClockCycles(dut.clk, 10)
+    dut.rst_n.value = 1
+
+    # Load antiferromagnetic ring J matrix.
+    # Ring edges: (0,1), (1,2), (2,3), (3,0)  →  J = -40
+    # Non-edges:  (0,2), (1,3)                 →  J =  0  (overwrite reset default K=32)
+    ring_j = [
+        (0, 1, -40), (0, 2,   0), (0, 3, -40),
+        (1, 0, -40), (1, 2, -40), (1, 3,   0),
+        (2, 0,   0), (2, 1, -40), (2, 3, -40),
+        (3, 0, -40), (3, 1,   0), (3, 2, -40),
+    ]
+    for row, col, val in ring_j:
+        await _spi_write_j(dut, row, col, val)
+
+    # Start network
+    dut.uio_in.value = _SPI_IDLE
+    dut.ui_in.value  = 0b001  # run=1
+    await ClockCycles(dut.clk, 2000)  # warm-up
+
+    # Collect samples
+    N = 1000
+    counts = [0] * 16
+    for _ in range(N):
+        await ClockCycles(dut.clk, 5)
+        counts[int(dut.uo_out.value) & 0x0F] += 1
+
+    # ---- Results histogram ---------------------------------------------------
+    GROUND = {5, 10}       # 0b0101=5, 0b1010=10 → cut=4, E=-160
+    WORST  = {0, 15}       # 0b0000=0, 0b1111=15 → cut=0, E=+160
+
+    dut._log.info(f"MAX-CUT 4-ring  —  {N} samples")
+    dut._log.info("  state | count |  frac  | cut | E(K=40) | distribution")
+    dut._log.info("  ------+-------+--------+-----+---------+--...")
+    for s in range(16):
+        cnt  = counts[s]
+        frac = cnt / N
+        cut  = _ring_cut(s)
+        E    = 160 - 80 * cut          # E = K*(4-2*cut) = 40*(4-2*cut) = 160-80*cut
+        bar  = "█" * round(frac * 60)  # scale: 60 chars = 100 %
+        tag  = "  ◄ OPTIMAL"  if s in GROUND else \
+               "  ← worst"   if s in WORST  else ""
+        dut._log.info(
+            f"  {s:04b}  |  {cnt:4d}  | {frac:5.1%}  |  {cut}  |  {E:+5d}  | {bar}{tag}"
+        )
+
+    gs_frac = sum(counts[s] for s in GROUND) / N
+    wo_frac = sum(counts[s] for s in WORST)  / N
+    best    = max(range(16), key=lambda s: counts[s])
+
+    dut._log.info(f"Ground-state (cut=4) fraction : {gs_frac:.1%}  (random baseline 12.5 %)")
+    dut._log.info(f"High-energy  (cut=0) fraction : {wo_frac:.1%}")
+    dut._log.info(f"Most-sampled state            : {best:04b} (int {best})"
+                  f"  {'✓ ground state' if best in GROUND else '✗ NOT a ground state'}")
+
+    # ---- Assertions ----------------------------------------------------------
+    assert gs_frac > 0.25, (
+        f"Ground states underrepresented: {gs_frac:.1%} < 25 % — "
+        "chip not converging to MAX-CUT solution"
+    )
+    assert wo_frac < 0.08, (
+        f"High-energy states not suppressed: {wo_frac:.1%} ≥ 8 % — "
+        "Boltzmann distribution not working"
+    )
+    assert best in GROUND, (
+        f"Most frequent state 0b{best:04b} (cut={_ring_cut(best)}) is not a MAX-CUT solution"
+    )
+
+
+# ---------------------------------------------------------------------------
 # SPI loading tests
 # ---------------------------------------------------------------------------
 
