@@ -48,7 +48,7 @@ async def test_trng_drives_pbits(dut):
     dut.ui_in.value = 0b001  # ui[0]=run
 
     # Collect samples over 2500 clocks; look for at least two distinct values.
-    # With K=8 ferromagnetic coupling, initial flip probability per TRNG byte
+    # With K=32 ferromagnetic coupling, initial flip probability per TRNG byte
     # is 12.5%.  2500 clocks gives >99.9% confidence of seeing at least one flip.
     samples = set()
     for _ in range(500):           # 500 × 5 = 2500 clock cycles
@@ -382,13 +382,13 @@ async def test_spi_strong_ferromagnet(dut):
 
     With K=40, thresh for a fully-aligned neighbourhood is 128+3*40=248,
     making the ground states (all-0, all-1) extremely stable.  We expect
-    ferromagnetic alignment well above the default K=8 result (~32%).
+    ferromagnetic alignment well above the default K=32 result (~32%).
     """
     dut._log.info("Start — SPI strong ferromagnet test")
     clock = Clock(dut.clk, 40, unit="ns")
     cocotb.start_soon(clock.start())
 
-    # Reset (j_reg → ferromagnetic K=8 defaults, states → 0)
+    # Reset (j_reg → ferromagnetic K=32 defaults, states → 0)
     dut.ena.value = 1
     dut.ui_in.value  = 0b000
     dut.uio_in.value = _SPI_IDLE

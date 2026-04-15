@@ -23,7 +23,7 @@
  *   Send 16-bit frames [addr_byte][data_byte].
  *   addr[3:0] = J register index (0-15 = J[row*4+col], row-major).
  *   data = 8-bit signed coupling weight.
- *   J resets to ferromagnetic K=8 on rst_n, so chip works without SPI config.
+ *   J resets to ferromagnetic K=32 on rst_n, so chip works without SPI config.
  */
 
 `default_nettype none
