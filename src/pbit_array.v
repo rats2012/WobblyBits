@@ -18,12 +18,13 @@
  *   s_i_new = (trng_byte < thresh) ? 1 : 0
  *
  * J register file:
- *   36 × 8-bit signed registers, j_reg[6·row + col] = J[row][col].
- *   Diagonal entries (row == col) are never accessed by the update logic.
+ *   External SPI view remains a 6 × 6 matrix with addr = 6·row + col.
+ *   Internally we store only the 15 unique off-diagonal pairs and enforce
+ *   J[i][j] == J[j][i]. Diagonal entries are hard-wired to 0.
  *   Reset default: ferromagnetic K=20 (all off-diagonal = 8'd20).
- *   SPI write port (wr_en / wr_addr / wr_data) loads new values at runtime.
+ *   SPI writes to either half of a symmetric pair update the same storage.
  *
- * Cell cost estimate: ~350–450 cells (J reg file dominates).
+ * Cell cost estimate: dominated by the J store and its muxing.
  */
 
 `default_nettype none
@@ -42,63 +43,86 @@ module pbit_array (
 );
 
   // ---- J coupling matrix register file ------------------------------------
-  // j_reg[6*row + col] = J[row][col], 8-bit signed
+  // Store only the 15 unique off-diagonal pairs:
+  // (0,1) (0,2) (0,3) (0,4) (0,5) (1,2) (1,3) (1,4) (1,5)
+  // (2,3) (2,4) (2,5) (3,4) (3,5) (4,5)
   // Reset: ferromagnetic K=20 for all off-diagonal, 0 on diagonal.
   // K=20 gives net_max = 5*20 = 100, thresh ∈ {28, 78, 128, 178, 228} — solid coupling.
   // K must be < 26 to avoid an all-zeros absorbing state (thresh_min = 128 - 5K > 0).
   // K=20 gives thresh_min = 28, so P(escape from all-zeros) ≈ 11% per update.
-  reg signed [7:0] j_reg [0:35];
+  reg signed [7:0] j_01, j_02, j_03, j_04, j_05;
+  reg signed [7:0] j_12, j_13, j_14, j_15;
+  reg signed [7:0] j_23, j_24, j_25;
+  reg signed [7:0] j_34, j_35;
+  reg signed [7:0] j_45;
 
   always @(posedge clk or negedge rst_n) begin
     if (!rst_n) begin
-      // Row 0
-      j_reg[0]  <= 8'sd0;  j_reg[1]  <= 8'sd20; j_reg[2]  <= 8'sd20;
-      j_reg[3]  <= 8'sd20; j_reg[4]  <= 8'sd20; j_reg[5]  <= 8'sd20;
-      // Row 1
-      j_reg[6]  <= 8'sd20; j_reg[7]  <= 8'sd0;  j_reg[8]  <= 8'sd20;
-      j_reg[9]  <= 8'sd20; j_reg[10] <= 8'sd20; j_reg[11] <= 8'sd20;
-      // Row 2
-      j_reg[12] <= 8'sd20; j_reg[13] <= 8'sd20; j_reg[14] <= 8'sd0;
-      j_reg[15] <= 8'sd20; j_reg[16] <= 8'sd20; j_reg[17] <= 8'sd20;
-      // Row 3
-      j_reg[18] <= 8'sd20; j_reg[19] <= 8'sd20; j_reg[20] <= 8'sd20;
-      j_reg[21] <= 8'sd0;  j_reg[22] <= 8'sd20; j_reg[23] <= 8'sd20;
-      // Row 4
-      j_reg[24] <= 8'sd20; j_reg[25] <= 8'sd20; j_reg[26] <= 8'sd20;
-      j_reg[27] <= 8'sd20; j_reg[28] <= 8'sd0;  j_reg[29] <= 8'sd20;
-      // Row 5
-      j_reg[30] <= 8'sd20; j_reg[31] <= 8'sd20; j_reg[32] <= 8'sd20;
-      j_reg[33] <= 8'sd20; j_reg[34] <= 8'sd20; j_reg[35] <= 8'sd0;
+      j_01 <= 8'sd20; j_02 <= 8'sd20; j_03 <= 8'sd20; j_04 <= 8'sd20; j_05 <= 8'sd20;
+      j_12 <= 8'sd20; j_13 <= 8'sd20; j_14 <= 8'sd20; j_15 <= 8'sd20;
+      j_23 <= 8'sd20; j_24 <= 8'sd20; j_25 <= 8'sd20;
+      j_34 <= 8'sd20; j_35 <= 8'sd20;
+      j_45 <= 8'sd20;
     end else if (wr_en) begin
-      j_reg[wr_addr] <= $signed(wr_data);
+      case (wr_addr)
+        6'd1,  6'd6:  j_01 <= $signed(wr_data);
+        6'd2,  6'd12: j_02 <= $signed(wr_data);
+        6'd3,  6'd18: j_03 <= $signed(wr_data);
+        6'd4,  6'd24: j_04 <= $signed(wr_data);
+        6'd5,  6'd30: j_05 <= $signed(wr_data);
+        6'd8,  6'd13: j_12 <= $signed(wr_data);
+        6'd9,  6'd19: j_13 <= $signed(wr_data);
+        6'd10, 6'd25: j_14 <= $signed(wr_data);
+        6'd11, 6'd31: j_15 <= $signed(wr_data);
+        6'd15, 6'd20: j_23 <= $signed(wr_data);
+        6'd16, 6'd26: j_24 <= $signed(wr_data);
+        6'd17, 6'd32: j_25 <= $signed(wr_data);
+        6'd22, 6'd27: j_34 <= $signed(wr_data);
+        6'd23, 6'd33: j_35 <= $signed(wr_data);
+        6'd29, 6'd34: j_45 <= $signed(wr_data);
+        default: begin
+        end
+      endcase
     end
   end
 
   // ---- Round-robin update index -------------------------------------------
   reg [2:0] upd_idx;
 
-  // ---- Base address of the row currently being updated --------------------
-  // row_base = upd_idx * 6; computed via case to avoid implicit multiplier.
-  reg [5:0] row_base;
+  // ---- J values for the row currently being updated ------------------------
+  reg signed [7:0] Jrow0, Jrow1, Jrow2, Jrow3, Jrow4, Jrow5;
   always @(*) begin
     case (upd_idx)
-      3'd0: row_base = 6'd0;
-      3'd1: row_base = 6'd6;
-      3'd2: row_base = 6'd12;
-      3'd3: row_base = 6'd18;
-      3'd4: row_base = 6'd24;
-      3'd5: row_base = 6'd30;
-      default: row_base = 6'd0;
+      3'd0: begin
+        Jrow0 = 8'sd0; Jrow1 = j_01;  Jrow2 = j_02;
+        Jrow3 = j_03;  Jrow4 = j_04;  Jrow5 = j_05;
+      end
+      3'd1: begin
+        Jrow0 = j_01;  Jrow1 = 8'sd0; Jrow2 = j_12;
+        Jrow3 = j_13;  Jrow4 = j_14;  Jrow5 = j_15;
+      end
+      3'd2: begin
+        Jrow0 = j_02;  Jrow1 = j_12;  Jrow2 = 8'sd0;
+        Jrow3 = j_23;  Jrow4 = j_24;  Jrow5 = j_25;
+      end
+      3'd3: begin
+        Jrow0 = j_03;  Jrow1 = j_13;  Jrow2 = j_23;
+        Jrow3 = 8'sd0; Jrow4 = j_34;  Jrow5 = j_35;
+      end
+      3'd4: begin
+        Jrow0 = j_04;  Jrow1 = j_14;  Jrow2 = j_24;
+        Jrow3 = j_34;  Jrow4 = 8'sd0; Jrow5 = j_45;
+      end
+      3'd5: begin
+        Jrow0 = j_05;  Jrow1 = j_15;  Jrow2 = j_25;
+        Jrow3 = j_35;  Jrow4 = j_45;  Jrow5 = 8'sd0;
+      end
+      default: begin
+        Jrow0 = 8'sd0; Jrow1 = 8'sd0; Jrow2 = 8'sd0;
+        Jrow3 = 8'sd0; Jrow4 = 8'sd0; Jrow5 = 8'sd0;
+      end
     endcase
   end
-
-  // ---- J values for the row currently being updated (combinational mux) ---
-  wire signed [7:0] Jrow0 = j_reg[row_base + 6'd0]; // J[upd_idx][0]
-  wire signed [7:0] Jrow1 = j_reg[row_base + 6'd1]; // J[upd_idx][1]
-  wire signed [7:0] Jrow2 = j_reg[row_base + 6'd2]; // J[upd_idx][2]
-  wire signed [7:0] Jrow3 = j_reg[row_base + 6'd3]; // J[upd_idx][3]
-  wire signed [7:0] Jrow4 = j_reg[row_base + 6'd4]; // J[upd_idx][4]
-  wire signed [7:0] Jrow5 = j_reg[row_base + 6'd5]; // J[upd_idx][5]
 
   // ---- Spin contributions (+J if state=1, −J if state=0) ------------------
   // Sign-extend each J to 11 bits then conditionally negate.

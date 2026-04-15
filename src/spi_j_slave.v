@@ -6,7 +6,8 @@
  *
  * Protocol: SPI Mode 0 (CPOL=0, CPHA=0), MSB first.
  * Frame: 16 bits per transaction = 8-bit address byte + 8-bit data byte.
- *   addr[5:0] selects the register (0-35 = J[row*6 + col] in row-major order)
+ *   addr[5:0] selects the external matrix entry
+ *   (0-35 = J[row*6 + col] in row-major order)
  *   data = 8-bit signed weight to write
  *
  * The SPI inputs are synchronised into the main clock domain with a 2-FF

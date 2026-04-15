@@ -21,7 +21,9 @@
  *
  * SPI loading (before asserting run):
  *   Send 16-bit frames [addr_byte][data_byte].
- *   addr[5:0] = J register index (0-35 = J[row*6+col], row-major).
+ *   addr[5:0] = J register index (0-35 = J[row*6+col], row-major external view).
+ *   Internally the matrix is stored symmetrically, so J[i][j] and J[j][i]
+ *   share the same physical weight register.
  *   data = 8-bit signed coupling weight.
  *   J resets to ferromagnetic K=20 on rst_n, so chip works without SPI config.
  */

@@ -331,7 +331,10 @@ _SPI_IDLE = _SPI_CS_N  # CS deasserted, SCK=0, MOSI=0
 
 async def _spi_write_j(dut, row, col, value, sck_half=8):
     """
-    Bit-bang one SPI frame to write J[row][col] = value (signed int).
+    Bit-bang one SPI frame to write the external entry J[row][col] = value.
+
+    The RTL currently stores symmetric pairs internally, so writes to
+    J[row][col] and J[col][row] alias the same physical storage.
 
     Protocol: 16-bit transfer (addr byte then data byte), MSB first,
     SPI Mode 0.  sck_half is the SCK half-period in system clock cycles;
@@ -365,7 +368,7 @@ async def _spi_write_j(dut, row, col, value, sck_half=8):
 
 async def _load_j_matrix(dut, k):
     """
-    Write all 30 off-diagonal J entries to k (8-bit signed) via SPI.
+    Write all 30 off-diagonal external J entries to k (8-bit signed) via SPI.
     Diagonal entries (J[i][i]) are left at their reset default (0).
     """
     for row in range(6):
