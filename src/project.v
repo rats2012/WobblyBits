@@ -52,8 +52,10 @@ module tt_um_Rats2012_WobblyBits (
   wire rand_init = ui_in[1];
 
   // TRNG runs whenever the chip is out of reset and not bypassed — decoupled
-  // from run so that trng_data holds valid entropy by the time run is asserted.
-  // This is required for rand_init seeding to work correctly.
+  // from run so it is settled and producing valid entropy by the time run is
+  // asserted.  This is required for rand_init seeding to work correctly.
+  // In GL simulation assert trng_bypass=1 during reset/SPI-load phases to
+  // suppress ring-oscillator delta-cycle events (see _reset_and_run in test.py).
   wire trng_en = ~ui_in[2];
 
   // MISO (uio[2]) is the only output; all other bidir pins are inputs.

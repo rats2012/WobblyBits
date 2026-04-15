@@ -71,13 +71,7 @@ async def test_trng_bypass_freezes_output(dut):
     cocotb.start_soon(clock.start())
 
     # Reset and run for a while to get a non-zero byte
-    dut.ena.value = 1
-    dut.ui_in.value = 0
-    dut.uio_in.value = 0
-    dut.rst_n.value = 0
-    await ClockCycles(dut.clk, 10)
-    dut.rst_n.value = 1
-
+    await _do_reset(dut)
     dut.ui_in.value = 0b001  # run=1
     await ClockCycles(dut.clk, 5 if GL_TEST else 400)  # GL: minimal warmup
 
@@ -99,16 +93,30 @@ async def test_trng_bypass_freezes_output(dut):
 # P-bit array tests
 # ---------------------------------------------------------------------------
 
+async def _do_reset(dut):
+    """Assert reset for 10 clocks, then release.
+    In GL mode trng_bypass=1 is held during reset to prevent ring-oscillator
+    delta-cycle storms (the TRNG is always enabled in RTL via trng_en=~bypass,
+    so bypassing only during the dead reset window is the correct mitigation)."""
+    dut.ena.value    = 1
+    dut.uio_in.value = 0
+    dut.rst_n.value  = 0
+    dut.ui_in.value  = 0b100 if GL_TEST else 0b000  # bypass=1 in GL during reset
+    await ClockCycles(dut.clk, 10)
+    dut.rst_n.value  = 1
+    dut.ui_in.value  = 0b000  # restore: run=0, rand_init=0, bypass=0
+
+
 async def _reset_and_run(dut, run_cycles):
     """Helper: reset, then run for run_cycles clocks with run=1.
-    In GL mode caps at 10 cycles to limit ring-oscillator simulation events."""
-    dut.ena.value = 1
-    dut.ui_in.value = 0
-    dut.uio_in.value = 0
-    dut.rst_n.value = 0
-    await ClockCycles(dut.clk, 10)
-    dut.rst_n.value = 1
-    dut.ui_in.value = 0b001  # run=1
+    In GL mode:
+      - trng_bypass=1 is held during reset to suppress ring-oscillator
+        delta-cycle events (the TRNG is always enabled in RTL via trng_en=~bypass,
+        so bypassing during the dead reset phase avoids the GL sim slowdown without
+        toggling the oscillators in real use).
+      - run_cycles is capped at 10 to limit total GL sim time."""
+    await _do_reset(dut)
+    dut.ui_in.value = 0b001  # run=1, bypass=0
     cycles = min(run_cycles, 10) if GL_TEST else run_cycles
     for i in range(cycles):
         await ClockCycles(dut.clk, 1)
@@ -257,10 +265,8 @@ async def test_rand_init_seeds_states(dut):
         "rand_init=1 produced 000000 after 500 cycles — TRNG not firing or seed not wired"
 
     # ---- Part B: rand_init=0 should leave state at 000000 (with bypass) ----
-    dut.ui_in.value = 0b000
-    dut.rst_n.value = 0
-    await ClockCycles(dut.clk, 5)
-    dut.rst_n.value = 1
+    await _do_reset(dut)
+    dut.uio_in.value = _SPI_IDLE
 
     # trng_bypass=1 suppresses both TRNG and Gibbs updates so state stays 000000
     dut.ui_in.value = 0b101   # run=1, rand_init=0, trng_bypass=1
@@ -321,12 +327,8 @@ async def test_max_cut_k33_bipartite(dut):
     cocotb.start_soon(clock.start())
 
     # Reset
-    dut.ena.value = 1
-    dut.ui_in.value  = 0b000
+    await _do_reset(dut)
     dut.uio_in.value = _SPI_IDLE
-    dut.rst_n.value  = 0
-    await ClockCycles(dut.clk, 10)
-    dut.rst_n.value = 1
 
     # Load K_{3,3} J matrix:
     #   cross-partition edges (i in {0,1,2}, j in {3,4,5})  →  J = -40
@@ -474,12 +476,8 @@ async def test_spi_strong_ferromagnet(dut):
     cocotb.start_soon(clock.start())
 
     # Reset (j_reg → ferromagnetic K=32 defaults, states → 0)
-    dut.ena.value = 1
-    dut.ui_in.value  = 0b000
+    await _do_reset(dut)
     dut.uio_in.value = _SPI_IDLE
-    dut.rst_n.value  = 0
-    await ClockCycles(dut.clk, 10)
-    dut.rst_n.value = 1
 
     # Load K=40 for all 30 off-diagonal entries (run=0 during load)
     await _load_j_matrix(dut, 40)
@@ -523,12 +521,8 @@ async def test_spi_uncoupled(dut):
     cocotb.start_soon(clock.start())
 
     # Reset
-    dut.ena.value = 1
-    dut.ui_in.value  = 0b000
+    await _do_reset(dut)
     dut.uio_in.value = _SPI_IDLE
-    dut.rst_n.value  = 0
-    await ClockCycles(dut.clk, 10)
-    dut.rst_n.value = 1
 
     # Load J=0 (fully uncoupled)
     await _load_j_matrix(dut, 0)
@@ -598,12 +592,8 @@ async def test_gl_reset_contract(dut):
     clock = Clock(dut.clk, 40, unit="ns")
     cocotb.start_soon(clock.start())
 
-    dut.ena.value    = 1
-    dut.ui_in.value  = 0
+    await _do_reset(dut)
     dut.uio_in.value = _SPI_IDLE
-    dut.rst_n.value  = 0
-    await ClockCycles(dut.clk, 4)
-    dut.rst_n.value  = 1
     await ClockCycles(dut.clk, 2)
 
     assert int(dut.uo_out.value)  == 0x00, \
@@ -631,12 +621,8 @@ async def test_gl_run_pause_contract(dut):
     clock = Clock(dut.clk, 40, unit="ns")
     cocotb.start_soon(clock.start())
 
-    dut.ena.value    = 1
-    dut.ui_in.value  = 0
+    await _do_reset(dut)
     dut.uio_in.value = _SPI_IDLE
-    dut.rst_n.value  = 0
-    await ClockCycles(dut.clk, 4)
-    dut.rst_n.value  = 1
     await ClockCycles(dut.clk, 2)
 
     # --- Phase A: run=0 ---
@@ -680,12 +666,8 @@ async def test_gl_spi_forces_first_update(dut):
     clock = Clock(dut.clk, 40, unit="ns")
     cocotb.start_soon(clock.start())
 
-    dut.ena.value    = 1
-    dut.ui_in.value  = 0
+    await _do_reset(dut)
     dut.uio_in.value = _SPI_IDLE
-    dut.rst_n.value  = 0
-    await ClockCycles(dut.clk, 4)
-    dut.rst_n.value  = 1
     await ClockCycles(dut.clk, 4)
 
     # Load J[0][1]=J[0][2]=J[0][3]=J[0][4]=J[0][5]=-128 (all neighbours of pbit-0)
@@ -728,12 +710,8 @@ async def test_gl_spi_cs_abort_no_commit(dut):
     clock = Clock(dut.clk, 40, unit="ns")
     cocotb.start_soon(clock.start())
 
-    dut.ena.value    = 1
-    dut.ui_in.value  = 0
+    await _do_reset(dut)
     dut.uio_in.value = _SPI_IDLE
-    dut.rst_n.value  = 0
-    await ClockCycles(dut.clk, 4)
-    dut.rst_n.value  = 1
     await ClockCycles(dut.clk, 4)
 
     # Aborted write targeting J[0][1]: send address byte then pull CS high
