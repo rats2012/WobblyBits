@@ -333,14 +333,19 @@ async def test_max_cut_k33_bipartite(dut):
     # Load K_{3,3} J matrix:
     #   cross-partition edges (i in {0,1,2}, j in {3,4,5})  →  J = -40
     #   intra-partition pairs                                →  J =  0  (clear reset default)
+    # In GL mode bypass=1 during the SPI load to suppress ring-oscillator events.
     A = {0, 1, 2}
     B = {3, 4, 5}
+    if GL_TEST:
+        dut.ui_in.value = 0b100  # bypass=1 during SPI load
     for row in range(6):
         for col in range(6):
             if row != col:
                 is_cross = (row in A and col in B) or (row in B and col in A)
                 val = -40 if is_cross else 0
                 await _spi_write_j(dut, row, col, val)
+    if GL_TEST:
+        dut.ui_in.value = 0b000  # restore
 
     # Start network
     dut.uio_in.value = _SPI_IDLE
@@ -455,11 +460,17 @@ async def _load_j_matrix(dut, k):
     """
     Write all 30 off-diagonal external J entries to k (8-bit signed) via SPI.
     Diagonal entries (J[i][i]) are left at their reset default (0).
+    In GL mode trng_bypass=1 is held for the duration to suppress ring-oscillator
+    delta-cycle events during the ~8000-cycle SPI load sequence.
     """
+    if GL_TEST:
+        dut.ui_in.value = 0b100  # bypass=1, run=0 — suppress TRNG during SPI load
     for row in range(6):
         for col in range(6):
             if row != col:
                 await _spi_write_j(dut, row, col, k)
+    if GL_TEST:
+        dut.ui_in.value = 0b000  # restore
 
 
 @cocotb.test()  # GL: SPI wiring check only; statistical assertions skipped in GL mode
@@ -671,8 +682,13 @@ async def test_gl_spi_forces_first_update(dut):
     await ClockCycles(dut.clk, 4)
 
     # Load J[0][1]=J[0][2]=J[0][3]=J[0][4]=J[0][5]=-128 (all neighbours of pbit-0)
+    # GL: bypass=1 during SPI writes to suppress ring-oscillator delta-cycle events.
+    if GL_TEST:
+        dut.ui_in.value = 0b100
     for col in (1, 2, 3, 4, 5):
         await _spi_write_j(dut, 0, col, -128)
+    if GL_TEST:
+        dut.ui_in.value = 0b000
 
     if GL_TEST:
         # GL: SPI wiring verified; skip TRNG/update polling (delta-cycle storms in ring-osc netlist)
@@ -714,6 +730,10 @@ async def test_gl_spi_cs_abort_no_commit(dut):
     dut.uio_in.value = _SPI_IDLE
     await ClockCycles(dut.clk, 4)
 
+    # GL: bypass=1 during SPI activity to suppress ring-oscillator delta-cycle events.
+    if GL_TEST:
+        dut.ui_in.value = 0b100
+
     # Aborted write targeting J[0][1]: send address byte then pull CS high
     await _spi_abort_after_address(dut, 0, 1)
     dut._log.info("Aborted frame sent; CS deasserted after address byte")
@@ -721,6 +741,9 @@ async def test_gl_spi_cs_abort_no_commit(dut):
     # Good writes: J[0][1]=...=J[0][5]=-128
     for col in (1, 2, 3, 4, 5):
         await _spi_write_j(dut, 0, col, -128)
+
+    if GL_TEST:
+        dut.ui_in.value = 0b000
 
     if GL_TEST:
         # GL: SPI transaction integrity verified; skip TRNG/update polling (delta-cycle storms)
