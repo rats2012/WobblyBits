@@ -27,7 +27,7 @@ project:
 pinout:
   # Inputs
   ui[0]: "run"           # 1 = run network, 0 = pause
-  ui[1]: "step"          # single-step pulse (debug)
+  ui[1]: "rand_init"     # seed TRNG / randomise initial p-bit states
   ui[2]: "trng_bypass"   # freeze TRNG output (for deterministic testing)
   ui[3]: ""
   ui[4]: ""

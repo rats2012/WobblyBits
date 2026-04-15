@@ -4,7 +4,7 @@
  
 WobblyBits is a probabilistic computing demonstration chip - 6 p-bits (probabilistic bits) driven by hardware randomness from a bunch of on-chip ring oscillators.
 
-A p-bit is a device that fluctuates randomly between 0 and 1 with a probability defined by its neihboring p-bit. It sits between a classical bit and a q-bit. The "coupling" matric (reffered to as a J matrix in the code), the network will sammple the encoded probabilty distrbiution - this allows combinatorial optimisation (MAX-CUT etc...)
+A p-bit is a device that fluctuates randomly between 0 and 1 with a probability defined by its neighbouring p-bit. It sits between a classical bit and a q-bit. The "coupling" matrix (referred to as a J matrix in the code), the network will sample the encoded probability distribution - this allows combinatorial optimisation (MAX-CUT etc...)
 
 The idea here is to try to effectivly have an "Ising model" which is a model in statistical phyics ([https://www.youtube.com/watch?v=1CCZkHPrhzk](https://www.youtube.com/watch?v=1CCZkHPrhzk))
 
