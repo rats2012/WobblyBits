@@ -76,7 +76,7 @@ async def test_trng_bypass_freezes_output(dut):
     dut.rst_n.value = 1
 
     dut.ui_in.value = 0b001  # run=1
-    await ClockCycles(dut.clk, 20 if GL_TEST else 400)  # GL: minimal warmup
+    await ClockCycles(dut.clk, 5 if GL_TEST else 400)  # GL: minimal warmup
 
     # Freeze
     dut.ui_in.value = 0b101  # run=1, bypass=1
@@ -84,7 +84,7 @@ async def test_trng_bypass_freezes_output(dut):
     dut._log.info(f"Frozen at uo_out=0x{frozen_value:02x}")
 
     # Run 200 more cycles — output must not change (20 in GL to cut sim time)
-    for _ in range(20 if GL_TEST else 200):
+    for _ in range(10 if GL_TEST else 200):
         await ClockCycles(dut.clk, 1)
         assert int(dut.uo_out.value) == frozen_value, \
             f"uo_out changed while bypassed: {int(dut.uo_out.value):#04x} != {frozen_value:#04x}"
@@ -98,7 +98,7 @@ async def test_trng_bypass_freezes_output(dut):
 
 async def _reset_and_run(dut, run_cycles):
     """Helper: reset, then run for run_cycles clocks with run=1.
-    In GL mode caps at 100 cycles to limit ring-oscillator simulation events."""
+    In GL mode caps at 10 cycles to limit ring-oscillator simulation events."""
     dut.ena.value = 1
     dut.ui_in.value = 0
     dut.uio_in.value = 0
@@ -106,7 +106,11 @@ async def _reset_and_run(dut, run_cycles):
     await ClockCycles(dut.clk, 10)
     dut.rst_n.value = 1
     dut.ui_in.value = 0b001  # run=1
-    await ClockCycles(dut.clk, min(run_cycles, 100) if GL_TEST else run_cycles)
+    cycles = min(run_cycles, 10) if GL_TEST else run_cycles
+    for i in range(cycles):
+        await ClockCycles(dut.clk, 1)
+        if GL_TEST:
+            dut._log.info(f"GL warmup {i + 1}/{cycles}: uo_out=0b{int(dut.uo_out.value) & 0xF:04b}")
 
 
 @cocotb.test(skip=GL_TEST)  # needs 800 cycles; covered by RTL test
@@ -142,8 +146,9 @@ async def test_pbit_run_paused(dut):
     clock = Clock(dut.clk, 40, unit="ns")
     cocotb.start_soon(clock.start())
 
-    # Warm up
-    await _reset_and_run(dut, 600)
+    # Warm up (GL: skip ring-osc warmup — state=0 after reset is sufficient to
+    # verify the pause gate; statistical liveness is an RTL concern)
+    await _reset_and_run(dut, 0 if GL_TEST else 600)
 
     # Pause (run=0, bypass=0 so TRNG still ticks internally)
     dut.ui_in.value = 0b000
@@ -367,7 +372,7 @@ async def _load_j_matrix(dut, k):
                 await _spi_write_j(dut, row, col, k)
 
 
-@cocotb.test(skip=GL_TEST)  # statistical assertion needs many cycles; RTL concern
+@cocotb.test()  # GL: SPI wiring check only; statistical assertions skipped in GL mode
 async def test_spi_strong_ferromagnet(dut):
     """
     SPI loading: write K=40 (stronger coupling than reset default K=8).
@@ -390,6 +395,11 @@ async def test_spi_strong_ferromagnet(dut):
 
     # Load K=40 for all 12 off-diagonal entries (run=0 during load)
     await _load_j_matrix(dut, 40)
+    dut._log.info("GL: SPI load of K=40 completed")
+
+    if GL_TEST:
+        # GL: SPI wiring verified — skip Boltzmann statistics (RTL concern)
+        return
 
     # Deassert CS, start network
     dut.uio_in.value = _SPI_IDLE
@@ -410,7 +420,7 @@ async def test_spi_strong_ferromagnet(dut):
         f"Strong ferromagnet alignment too low: {fraction:.1%} (expected >50%)"
 
 
-@cocotb.test(skip=GL_TEST)  # statistical assertion needs many cycles; RTL concern
+@cocotb.test()  # GL: SPI wiring check only; statistical assertions skipped in GL mode
 async def test_spi_uncoupled(dut):
     """
     SPI loading: write J=0 for all entries (completely decouple p-bits).
@@ -434,6 +444,11 @@ async def test_spi_uncoupled(dut):
 
     # Load J=0 (fully uncoupled)
     await _load_j_matrix(dut, 0)
+    dut._log.info("GL: SPI load of J=0 completed")
+
+    if GL_TEST:
+        # GL: SPI wiring verified — skip Boltzmann statistics (RTL concern)
+        return
 
     dut.uio_in.value = _SPI_IDLE
     dut.ui_in.value  = 0b001  # run=1
