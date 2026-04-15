@@ -41,8 +41,8 @@ uo_out[5:0]  →  live p-bit states
 | Pin | Direction | Function |
 |-----|-----------|----------|
 | `ui[0]` | in | `run` — 1 = network running, 0 = paused |
-| `ui[1]` | in | `step` — I had a clever plan for this but not implemented |
-| `ui[2]` | in | `trng_bypass` — freeze updates for deterministic testing |
+| `ui[1]` | in | `rand_init` — 1 = seed p-bits from TRNG on rising edge of `run` |
+| `ui[2]` | in | `trng_bypass` — freeze TRNG and updates for more deterministic testing |
 | `uo[5:0]` | out | live p-bit states (`pbit0`–`pbit5`) |
 | `uio[0]` | in | `SPI_CS` (active low) |
 | `uio[1]` | in | `SPI_MOSI` |

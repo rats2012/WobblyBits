@@ -24,6 +24,16 @@
  *   Reset default: ferromagnetic K=20 (all off-diagonal = 8'd20).
  *   SPI writes to either half of a symmetric pair update the same storage.
  *
+ * rand_init input:
+ *   When rand_init=1, the first trng_valid pulse after run is asserted seeds
+ *   states[5:0] from that TRNG byte instead of performing a Gibbs update.
+ *   This breaks the fixed-reset symmetry that would otherwise trap the chain
+ *   in one of several degenerate ground-state basins (e.g. MAX-CUT problems
+ *   where multiple optimal partitions exist).  With rand_init=0 behaviour is
+ *   unchanged: states reset to 000000 and all TRNG bytes drive Gibbs updates.
+ *   seed_done is cleared when run=0 so each new run=1 assertion gets a fresh
+ *   seed.
+ *
  * Cell cost estimate: dominated by the J store and its muxing.
  */
 
@@ -33,6 +43,7 @@ module pbit_array (
     input  wire       clk,
     input  wire       rst_n,
     input  wire       run,        // 1 = updates enabled
+    input  wire       rand_init,  // 1 = seed states from TRNG on run rising edge
     input  wire       trng_valid, // pulse: new TRNG byte ready
     input  wire [7:0] trng_data,  // random byte from neoTRNG
     // SPI write port from spi_j_slave (one-cycle pulse)
@@ -86,8 +97,9 @@ module pbit_array (
     end
   end
 
-  // ---- Round-robin update index -------------------------------------------
+  // ---- Round-robin update index + rand_init seed tracking ----------------
   reg [2:0] upd_idx;
+  reg       seed_done;   // cleared on run=0; set after first-byte seed
 
   // ---- J values for the row currently being updated ------------------------
   reg signed [7:0] Jrow0, Jrow1, Jrow2, Jrow3, Jrow4, Jrow5;
@@ -159,13 +171,28 @@ module pbit_array (
   wire [7:0] thresh = 8'd128 + $unsigned(net_sat);
 
   // ---- Sequential Gibbs update ---------------------------------------------
+  // rand_init=1: the first trng_valid pulse after run is asserted seeds all
+  // six states from that TRNG byte instead of doing a normal Gibbs update.
+  // seed_done is cleared whenever run=0 so each new run=1 assertion can seed.
   always @(posedge clk or negedge rst_n) begin
     if (!rst_n) begin
-      states  <= 6'b0;
-      upd_idx <= 3'd0;
-    end else if (run && trng_valid) begin
-      states[upd_idx] <= (trng_data < thresh) ? 1'b1 : 1'b0;
-      upd_idx <= (upd_idx == 3'd5) ? 3'd0 : upd_idx + 3'd1;
+      states    <= 6'b0;
+      upd_idx   <= 3'd0;
+      seed_done <= 1'b0;
+    end else begin
+      if (!run) begin
+        seed_done <= 1'b0;
+      end else if (run && trng_valid) begin
+        if (rand_init && !seed_done) begin
+          // First TRNG byte with rand_init=1: seed all states.
+          states    <= trng_data[5:0];
+          seed_done <= 1'b1;
+        end else begin
+          // Normal Gibbs update.
+          states[upd_idx] <= (trng_data < thresh) ? 1'b1 : 1'b0;
+          upd_idx <= (upd_idx == 3'd5) ? 3'd0 : upd_idx + 3'd1;
+        end
+      end
     end
   end
 

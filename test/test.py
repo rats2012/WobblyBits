@@ -204,6 +204,76 @@ async def test_pbit_ferromagnetic_alignment(dut):
 
 
 # ---------------------------------------------------------------------------
+# rand_init test
+# ---------------------------------------------------------------------------
+
+@cocotb.test(skip=GL_TEST)  # relies on TRNG being warm; RTL concern
+async def test_rand_init_seeds_states(dut):
+    """
+    rand_init=1 (ui_in[1]) seeds p-bit states from the first TRNG byte
+    received after run is asserted, breaking the fixed reset→000000 symmetry.
+
+    The TRNG is decoupled from run (enabled whenever trng_bypass=0) and
+    seeding uses the first trng_valid pulse after run rises — so the byte is
+    guaranteed fresh rather than captured at an arbitrary moment.
+
+    Test plan:
+      Part A — rand_init=1: reset, assert run+rand_init, wait up to 500 cycles
+        for the first TRNG byte.  The seeded state must be non-zero.
+      Part B — rand_init=0: same sequence without rand_init; with trng_bypass=1
+        added to suppress Gibbs updates so we can confirm state stays 000000
+        (i.e. no spurious seeding occurred).
+
+    Note: in SIM_MODE the TRNG is deterministic (registered inverters), so
+    the seeded value is reproducible but non-zero.  On real hardware it is
+    truly random.
+    """
+    dut._log.info("Start — rand_init seeding test")
+    clock = Clock(dut.clk, 40, unit="ns")
+    cocotb.start_soon(clock.start())
+
+    # ---- Part A: rand_init=1 should produce a non-zero initial state --------
+    dut.ena.value    = 1
+    dut.uio_in.value = _SPI_IDLE
+    dut.ui_in.value  = 0b000   # run=0, rand_init=0, trng_bypass=0
+    dut.rst_n.value  = 0
+    await ClockCycles(dut.clk, 10)
+    dut.rst_n.value = 1
+
+    assert (int(dut.uo_out.value) & 0x3F) == 0, \
+        "States should be 000000 immediately after reset"
+
+    # Assert run + rand_init; wait up to 500 cycles for the first TRNG byte
+    # to arrive and seed the states.
+    dut.ui_in.value = 0b011   # run=1, rand_init=1, trng_bypass=0
+    seeded = 0
+    for _ in range(500):
+        await ClockCycles(dut.clk, 1)
+        seeded = int(dut.uo_out.value) & 0x3F
+        if seeded != 0:
+            break
+    dut._log.info(f"Seeded initial state (rand_init=1): 0b{seeded:06b} (int {seeded})")
+    assert seeded != 0, \
+        "rand_init=1 produced 000000 after 500 cycles — TRNG not firing or seed not wired"
+
+    # ---- Part B: rand_init=0 should leave state at 000000 (with bypass) ----
+    dut.ui_in.value = 0b000
+    dut.rst_n.value = 0
+    await ClockCycles(dut.clk, 5)
+    dut.rst_n.value = 1
+
+    # trng_bypass=1 suppresses both TRNG and Gibbs updates so state stays 000000
+    dut.ui_in.value = 0b101   # run=1, rand_init=0, trng_bypass=1
+    await ClockCycles(dut.clk, 10)
+    unseeded = int(dut.uo_out.value) & 0x3F
+    dut._log.info(f"Unseeded initial state (rand_init=0): 0b{unseeded:06b} (int {unseeded})")
+    assert unseeded == 0, \
+        f"rand_init=0 changed state from 000000 to 0b{unseeded:06b} — unexpected seed or update"
+
+    dut._log.info("rand_init seeding works correctly")
+
+
+# ---------------------------------------------------------------------------
 # MAX-CUT demo test
 # ---------------------------------------------------------------------------
 
@@ -237,13 +307,14 @@ async def test_max_cut_k33_bipartite(dut):
 
     Note on symmetry breaking:
       The two ground states (000111 and 111000) are degenerate but separated by a
-      high energy barrier (~9×2×J=720 in coupling units). Hardware reset initialises
-      states=000000, so the chain always falls into the 000111 basin first. With J=40
-      the barrier-crossing probability per update is negligible, so 111000 is never
-      observed in a single run. This is a known limitation of the fixed reset state;
-      both ground states can be found by running independent trials with different
-      initial states (e.g. SPI-load states=111111 before asserting run=1, once that
-      feature is added to the hardware).
+      high energy barrier (~9×2×J=720 in coupling units). With rand_init=0 (default),
+      hardware reset initialises states=000000 and the chain always falls into the
+      000111 basin first; 111000 is never observed in a single run.
+      With rand_init=1 (ui_in[1]=1), states are seeded from the TRNG on the rising
+      edge of run, so independent trials land in different basins.  On real hardware
+      this means running twice with rand_init=1 will reliably find both ground states.
+      In simulation the TRNG is deterministic so the seed is fixed; see
+      test_rand_init_seeds_states for the seeding verification.
     """
     dut._log.info("Start — MAX-CUT K_{3,3} bipartite test")
     clock = Clock(dut.clk, 40, unit="ns")
@@ -307,9 +378,8 @@ async def test_max_cut_k33_bipartite(dut):
 
     dut._log.info(f"Ground-state (cut=9) fraction : {gs_frac:.1%}  (random baseline 3.1 %)")
     dut._log.info(f"High-energy  (cut=0) fraction : {wo_frac:.1%}")
-    dut._log.info(  "Note: only one of the two ground states (000111/111000) is typically observed.")
-    dut._log.info(  "      Hardware reset drives states=000000; the chain falls into the 000111 basin")
-    dut._log.info(  "      and J=40 couplings create a barrier too high to cross in a single run.")
+    dut._log.info(  "Note: only one ground state observed per run (symmetry breaking).")
+    dut._log.info(  "      Use rand_init=1 (ui_in[1]) to seed from TRNG and explore both basins.")
     dut._log.info(f"Most-sampled state            : {best:06b} (int {best})"
                   f"  {'✓ ground state' if best in GROUND else '✗ NOT a ground state'}")
 

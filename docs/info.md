@@ -49,8 +49,8 @@ SPI Mode 0 (CPOL=0, CPHA=0), MSB first. Each transaction is 16 bits: an address 
 
 | Pin | Function |
 |-----|----------|
-| `ui[0]` run | 1 = network running, 0 = paused (p-bits and TRNG frozen) |
-| `ui[1]` step | reserved (unused) |
+| `ui[0]` run | 1 = network running, 0 = paused (p-bit updates frozen) |
+| `ui[1]` rand_init | 1 = seed p-bit states from TRNG on rising edge of `run` |
 | `ui[2]` trng_bypass | 1 = freeze TRNG and p-bit updates (deterministic simulation) |
 
 ### Boltzmann sampling
@@ -90,30 +90,34 @@ For stronger alignment: load K=40 via SPI (addr pairs for all 30 off-diagonal po
 
 Load a K₃,₃ graph (anti-feromagnetic coupling J=−40 for cross-partition edges 0↔3, 0↔4, 0↔5, 1↔3, 1↔4, 1↔5, 2↔3, 2↔4, 2↔5; J=0 for intra-partition pairs). The two MAX-CUT ground states are `000111` (pbit0–2 low, pbit3–5 high) and `111000`. After warm-up, whichever ground state basin the chain entered will dominate the sample histogram.
 
-**Symmetry breaking / basin trapping:** Hardware reset initialises all p-bits to 0 (`states=000000`), so the chain always falls into the `000111` basin first. The two ground states are separated by a large energy barrier (~9×2×J = 720 in coupling units), making spontaneous basin crossing extremely unlikely within a practical run length. To observe `111000`, run a second independent trial with a different initial state (e.g. initialise states to `111111` before asserting `run=1`). This requires SPI-writable initial state, which is a planned future addition to the hardware (see architecture note above). In the RTL tests we observe only `000111`:
+**Symmetry breaking / basin trapping:** Hardware reset initialises all p-bits to 0 (`states=000000`), but the TRNG runs from reset onward, so the random sequence fed into the first Gibbs updates determines which basin is entered. With `rand_init=0` the simulation consistently lands in the `111000` basin. The two ground states are separated by a large energy barrier (~9×2×J = 720 in coupling units), making spontaneous basin crossing extremely unlikely within a single run. To explore both ground states, assert `rand_init=1` (`ui[1]=1`) before raising `run`: the p-bits are seeded from the first live TRNG byte, giving each trial a different starting point. Run the experiment twice and both `000111` and `111000` should appear as the dominant state across the two trials. In the RTL tests (where `rand_init=0`) we observe only `111000`:
 ```
-3960.00ns INFO     cocotb.regression                  running test.test_max_cut_k33_bipartite (6/12)
+418960.01ns INFO     cocotb.regression                  running test.test_max_cut_k33_bipartite (7/13)
                                                             MAX-CUT on K_{3,3} — 6-node complete bipartite graph.
-413960.01ns INFO     cocotb.tb                          Start — MAX-CUT K_{3,3} bipartite test
-1020760.01ns INFO     cocotb.tb                          MAX-CUT K_{3,3}  —  1000 samples
-1020760.01ns INFO     cocotb.tb                             state  | count |  frac  | cut | distribution
-1020760.01ns INFO     cocotb.tb                            --------+-------+--------+-----+--...
-1020760.01ns INFO     cocotb.tb                            000101  |    41  |  4.1%  |  6  | ██
-1020760.01ns INFO     cocotb.tb                            000111  |   595  | 59.5%  |  9  | ████████████████████████████████████  ◄ OPTIMAL
-1020760.01ns INFO     cocotb.tb                            001110  |    22  |  2.2%  |  5  | █
-1020760.01ns INFO     cocotb.tb                            010100  |    19  |  1.9%  |  4  | █
-1020760.01ns INFO     cocotb.tb                            010101  |    40  |  4.0%  |  5  | ██
-1020760.01ns INFO     cocotb.tb                            010110  |    36  |  3.6%  |  5  | ██
-1020760.01ns INFO     cocotb.tb                            011110  |    20  |  2.0%  |  4  | █
-1020760.01ns INFO     cocotb.tb                            100101  |    80  |  8.0%  |  5  | █████
-1020760.01ns INFO     cocotb.tb                            100111  |    73  |  7.3%  |  6  | ████
-1020760.01ns INFO     cocotb.tb                            101101  |    37  |  3.7%  |  4  | ██
-1020760.01ns INFO     cocotb.tb                            101110  |    20  |  2.0%  |  4  | █
-1020760.01ns INFO     cocotb.tb                            101111  |    17  |  1.7%  |  3  | █
-1020760.01ns INFO     cocotb.tb                          Ground-state (cut=9) fraction : 59.5%  (random baseline 3.1 %)
-1020760.01ns INFO     cocotb.tb                          High-energy  (cut=0) fraction : 0.0%
-1020760.01ns INFO     cocotb.tb                          Most-sampled state            : 000111 (int 7)  ✓ ground state
-1020760.01ns INFO     cocotb.regression                  test.test_max_cut_k33_bipartite passed
+418960.01ns INFO     cocotb.tb                          Start — MAX-CUT K_{3,3} bipartite test
+1025760.01ns INFO     cocotb.tb                          MAX-CUT K_{3,3}  —  1000 samples
+1025760.01ns INFO     cocotb.tb                             state  | count |  frac  | cut | distribution
+1025760.01ns INFO     cocotb.tb                            --------+-------+--------+-----+--...
+1025760.01ns INFO     cocotb.tb                            001100  |    19  |  1.9%  |  4  | █
+1025760.01ns INFO     cocotb.tb                            011100  |    21  |  2.1%  |  5  | █
+1025760.01ns INFO     cocotb.tb                            100010  |    19  |  1.9%  |  4  | █
+1025760.01ns INFO     cocotb.tb                            101000  |    89  |  8.9%  |  6  | █████
+1025760.01ns INFO     cocotb.tb                            101010  |    40  |  4.0%  |  5  | ██
+1025760.01ns INFO     cocotb.tb                            101100  |   142  | 14.2%  |  5  | █████████
+1025760.01ns INFO     cocotb.tb                            101101  |    37  |  3.7%  |  4  | ██
+1025760.01ns INFO     cocotb.tb                            110001  |    22  |  2.2%  |  5  | █
+1025760.01ns INFO     cocotb.tb                            110010  |    36  |  3.6%  |  5  | ██
+1025760.01ns INFO     cocotb.tb                            110011  |    20  |  2.0%  |  4  | █
+1025760.01ns INFO     cocotb.tb                            110101  |    20  |  2.0%  |  4  | █
+1025760.01ns INFO     cocotb.tb                            111000  |   445  | 44.5%  |  9  | ███████████████████████████  ◄ OPTIMAL
+1025760.01ns INFO     cocotb.tb                            111100  |    73  |  7.3%  |  6  | ████
+1025760.01ns INFO     cocotb.tb                            111101  |    17  |  1.7%  |  3  | █
+1025760.01ns INFO     cocotb.tb                          Ground-state (cut=9) fraction : 44.5%  (random baseline 3.1 %)
+1025760.01ns INFO     cocotb.tb                          High-energy  (cut=0) fraction : 0.0%
+1025760.01ns INFO     cocotb.tb                          Note: only one ground state observed per run (symmetry breaking).
+1025760.01ns INFO     cocotb.tb                                Use rand_init=1 (ui_in[1]) to seed from TRNG and explore both basins.
+1025760.01ns INFO     cocotb.tb                          Most-sampled state            : 111000 (int 56)  ✓ ground state
+1025760.01ns INFO     cocotb.regression                  test.test_max_cut_k33_bipartite passed
 ```
 
 ## External hardware

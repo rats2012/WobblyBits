@@ -10,8 +10,8 @@
  *
  * Pinout:
  *   ui_in[0]  — run         (1 = network running, 0 = paused)
- *   ui_in[1]  — step        (reserved, unused this stage)
- *   ui_in[2]  — trng_bypass (1 = freeze p-bit updates for deterministic sim)
+ *   ui_in[1]  — rand_init   (1 = seed p-bit states from TRNG on run rising edge)
+ *   ui_in[2]  — trng_bypass (1 = freeze TRNG and p-bit updates for deterministic sim)
  *   uio[0]    — SPI_CS      (input, active low)
  *   uio[1]    — SPI_MOSI    (input)
  *   uio[2]    — SPI_MISO    (output, tied 0 — write-only for now)
@@ -48,7 +48,13 @@ module tt_um_Rats2012_WobblyBits (
 );
 
   // trng_bypass (ui_in[2]) pauses p-bit updates as well as TRNG.
-  wire run = ui_in[0] & ~ui_in[2];
+  wire run       = ui_in[0] & ~ui_in[2];
+  wire rand_init = ui_in[1];
+
+  // TRNG runs whenever the chip is out of reset and not bypassed — decoupled
+  // from run so that trng_data holds valid entropy by the time run is asserted.
+  // This is required for rand_init seeding to work correctly.
+  wire trng_en = ~ui_in[2];
 
   // MISO (uio[2]) is the only output; all other bidir pins are inputs.
   assign uio_out = 8'h00;  // MISO tied 0 (write-only SPI)
@@ -66,7 +72,7 @@ module tt_um_Rats2012_WobblyBits (
   ) trng (
     .clk_i    (clk),
     .rstn_i   (rst_n),
-    .enable_i (run),
+    .enable_i (trng_en),
     .valid_o  (trng_valid),
     .data_o   (trng_data)
   );
@@ -94,6 +100,7 @@ module tt_um_Rats2012_WobblyBits (
     .clk        (clk),
     .rst_n      (rst_n),
     .run        (run),
+    .rand_init  (rand_init),
     .trng_valid (trng_valid),
     .trng_data  (trng_data),
     .wr_en      (spi_wr_en),
@@ -107,6 +114,6 @@ module tt_um_Rats2012_WobblyBits (
   // uio_in[0]=SPI_CS, [1]=SPI_MOSI, [3]=SPI_SCK used by spi_j_slave.
   // uio_in[2]=MISO input path (MISO is output-only, input path unused).
   // uio_in[7:4] = spare.
-  wire _unused = &{ena, ui_in[7:3], ui_in[1], uio_in[7:4], uio_in[2], 1'b0};
+  wire _unused = &{ena, ui_in[7:3], uio_in[7:4], uio_in[2], 1'b0};
 
 endmodule
