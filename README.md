@@ -1,50 +1,58 @@
 ![](../../workflows/gds/badge.svg) ![](../../workflows/docs/badge.svg) ![](../../workflows/test/badge.svg) ![](../../workflows/fpga/badge.svg)
 
-## WobblyBits 
+## WobblyBits
+ 
+WobblyBits is a probabilistic computing demonstration chip - 6 p-bits (probabilistic bits) driven by hardware randomness from a bunch of on-chip ring oscillators.
 
-WobblyBits is a probabilistic chip — a few p-bits (probabilistic bits) driven by
-hardware randomness from a bunch of on-chip ring oscillators.
+A p-bit is a device that fluctuates randomly between 0 and 1 with a probability defined by its neihboring p-bit. It sits between a classical bit and a q-bit. The "coupling" matric (reffered to as a J matrix in the code), the network will sammple the encoded probabilty distrbiution - this allows combinatorial optimisation (MAX-CUT etc...)
 
-A p-bit is a device that fluctuates randomly between 0 and 1 with a _controllable-ish_ probability. It kinda between classical bit and a qubit, but should work at room temp.
+The idea here is to try to effectivly have an "Ising model" which is a model in statistical phyics ([https://www.youtube.com/watch?v=1CCZkHPrhzk](https://www.youtube.com/watch?v=1CCZkHPrhzk))
+
+- [Full documentation](docs/info.md)
+- I aim to fabricate on SKY130 via [Tiny Tapeout](https://tinytapeout.com)
+
+## Architecture
+
+SPI on the `uio` ports of the tiny tapout can be used to load in the J coupling matrix, which are stored in 15 8-bit  signed registers
+
+Ring oscilators are then used to generate randomness (I pretty much used neoTRNG but ported to verilog), which feeds the states of the P-bit array, which feeds the outputs of the chip (`uo_out[0..5]`) and obviously is used with the J matrix to update the P bit states so we can settle on a solution.
+
+```
+SPI (uio[0..3])
+    ↓
+J coupling matrix  ←─────────────────┐
+(15 × 8-bit signed registers)        │
+    ↓                                │
+neoTRNG (3 ring-osc cells)           │
+    ↓                                │
+P-bit array [0..5]  (Gibbs update) ──┘
+    ↓
+uo_out[5:0]  →  live p-bit states
+```
+
+**neoTRNG** — three inverter rings (5, 7, 9 inverters) with XOR combining - Thermal jitter should provide the true entropy. [MIT licensed - ported from VHDL](https://github.com/stnolting/neoTRNG).
+
+**Gibbs update** — each TRNG byte drives one p-bit update in round-robin order. The update rule is `p(s_i=1) = sigmoid(128 + Σ J_ij·(2s_j−1))`, approximated as a threshold comparison against the random byte. The 15 unique coupling weights are 8-bit signed and stored in a compact symmetric register file.
+
+**SPI interface** — SPI Mode 0, 16-bit frames (`[addr_byte][data_byte]`). `addr[5:0]` selects the matrix entry in row-major order (0–35); symmetric pairs alias the same physical register. Resets to ferromagnetic K=20 so the chip works without any SPI configuration.
+
+## Pinout
+
+| Pin | Direction | Function |
+|-----|-----------|----------|
+| `ui[0]` | in | `run` — 1 = network running, 0 = paused |
+| `ui[1]` | in | `step` — I had a clever plan for this but not implemented |
+| `ui[2]` | in | `trng_bypass` — freeze updates for deterministic testing |
+| `uo[5:0]` | out | live p-bit states (`pbit0`–`pbit5`) |
+| `uio[0]` | in | `SPI_CS` (active low) |
+| `uio[1]` | in | `SPI_MOSI` |
+| `uio[2]` | out | `SPI_MISO` (tied 0 — write-only) |
+| `uio[3]` | in | `SPI_SCK` |
 
 
-# Tiny Tapeout Verilog Project Template GENERIC YAP:
+## A subset of the many amazing resources i used for this project
 
-- [Read the documentation for project](docs/info.md)
+- [Tiny Tapeout FAQ](https://tinytapeout.com/faq/)
+- [neoTRNG source](https://github.com/stnolting/neoTRNG)
+- [Ising model explanation video](https://www.youtube.com/watch?v=1CCZkHPrhzk)
 
-## What is Tiny Tapeout?
-
-Tiny Tapeout is an educational project that aims to make it easier and cheaper than ever to get your digital and analog designs manufactured on a real chip.
-
-To learn more and get started, visit https://tinytapeout.com.
-
-## Set up your Verilog project
-
-1. Add your Verilog files to the `src` folder.
-2. Edit the [info.yaml](info.yaml) and update information about your project, paying special attention to the `source_files` and `top_module` properties. If you are upgrading an existing Tiny Tapeout project, check out our [online info.yaml migration tool](https://tinytapeout.github.io/tt-yaml-upgrade-tool/).
-3. Edit [docs/info.md](docs/info.md) and add a description of your project.
-4. Adapt the testbench to your design. See [test/README.md](test/README.md) for more information.
-
-The GitHub action will automatically build the ASIC files using [LibreLane](https://www.zerotoasiccourse.com/terminology/librelane/).
-
-## Enable GitHub actions to build the results page
-
-- [Enabling GitHub Pages](https://tinytapeout.com/faq/#my-github-action-is-failing-on-the-pages-part)
-
-## Resources
-
-- [FAQ](https://tinytapeout.com/faq/)
-- [Digital design lessons](https://tinytapeout.com/digital_design/)
-- [Learn how semiconductors work](https://tinytapeout.com/siliwiz/)
-- [Join the community](https://tinytapeout.com/discord)
-- [Build your design locally](https://www.tinytapeout.com/guides/local-hardening/)
-
-## What next?
-
-- [Submit your design to the next shuttle](https://app.tinytapeout.com/).
-- Edit [this README](README.md) and explain your design, how it works, and how to test it.
-- Share your project on your social network of choice:
-  - LinkedIn [#tinytapeout](https://www.linkedin.com/search/results/content/?keywords=%23tinytapeout) [@TinyTapeout](https://www.linkedin.com/company/100708654/)
-  - Mastodon [#tinytapeout](https://chaos.social/tags/tinytapeout) [@matthewvenn](https://chaos.social/@matthewvenn)
-  - X (formerly Twitter) [#tinytapeout](https://twitter.com/hashtag/tinytapeout) [@tinytapeout](https://twitter.com/tinytapeout)
-  - Bluesky [@tinytapeout.com](https://bsky.app/profile/tinytapeout.com)

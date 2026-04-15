@@ -234,6 +234,16 @@ async def test_max_cut_k33_bipartite(dut):
       • ground-state fraction > 25 %  (baseline random = 2/64 = 3.1 %)
       • high-energy states (000000, 111111) < 5 % combined
       • the single most-sampled state is one of the two ground states
+
+    Note on symmetry breaking:
+      The two ground states (000111 and 111000) are degenerate but separated by a
+      high energy barrier (~9×2×J=720 in coupling units). Hardware reset initialises
+      states=000000, so the chain always falls into the 000111 basin first. With J=40
+      the barrier-crossing probability per update is negligible, so 111000 is never
+      observed in a single run. This is a known limitation of the fixed reset state;
+      both ground states can be found by running independent trials with different
+      initial states (e.g. SPI-load states=111111 before asserting run=1, once that
+      feature is added to the hardware).
     """
     dut._log.info("Start — MAX-CUT K_{3,3} bipartite test")
     clock = Clock(dut.clk, 40, unit="ns")
@@ -297,6 +307,9 @@ async def test_max_cut_k33_bipartite(dut):
 
     dut._log.info(f"Ground-state (cut=9) fraction : {gs_frac:.1%}  (random baseline 3.1 %)")
     dut._log.info(f"High-energy  (cut=0) fraction : {wo_frac:.1%}")
+    dut._log.info(  "Note: only one of the two ground states (000111/111000) is typically observed.")
+    dut._log.info(  "      Hardware reset drives states=000000; the chain falls into the 000111 basin")
+    dut._log.info(  "      and J=40 couplings create a barrier too high to cross in a single run.")
     dut._log.info(f"Most-sampled state            : {best:06b} (int {best})"
                   f"  {'✓ ground state' if best in GROUND else '✗ NOT a ground state'}")
 
