@@ -4,9 +4,9 @@
  *
  * WobblyBits — probabilistic computing chip
  *
- * Stage 2: 4 p-bits with SPI-loadable coupling matrix.
+ * Stage 2: 6 p-bits with SPI-loadable coupling matrix.
  *          Ring-oscillator TRNG drives sequential Gibbs sampling.
- *          p-bit states appear on uo_out[3:0].
+ *          p-bit states appear on uo_out[5:0].
  *
  * Pinout:
  *   ui_in[0]  — run         (1 = network running, 0 = paused)
@@ -16,14 +16,14 @@
  *   uio[1]    — SPI_MOSI    (input)
  *   uio[2]    — SPI_MISO    (output, tied 0 — write-only for now)
  *   uio[3]    — SPI_SCK     (input)
- *   uo_out[3:0] — live p-bit states (pbit0–pbit3)
- *   uo_out[7:4] — reserved (tied 0)
+ *   uo_out[5:0] — live p-bit states (pbit0–pbit5)
+ *   uo_out[7:6] — reserved (tied 0)
  *
  * SPI loading (before asserting run):
  *   Send 16-bit frames [addr_byte][data_byte].
- *   addr[3:0] = J register index (0-15 = J[row*4+col], row-major).
+ *   addr[5:0] = J register index (0-35 = J[row*6+col], row-major).
  *   data = 8-bit signed coupling weight.
- *   J resets to ferromagnetic K=32 on rst_n, so chip works without SPI config.
+ *   J resets to ferromagnetic K=20 on rst_n, so chip works without SPI config.
  */
 
 `default_nettype none
@@ -71,7 +71,7 @@ module tt_um_Rats2012_WobblyBits (
 
   // ---- SPI J-matrix loader -------------------------------------------------
   wire        spi_wr_en;
-  wire  [3:0] spi_wr_addr;
+  wire  [5:0] spi_wr_addr;
   wire  [7:0] spi_wr_data;
 
   spi_j_slave spi (
@@ -86,7 +86,7 @@ module tt_um_Rats2012_WobblyBits (
   );
 
   // ---- P-bit array ---------------------------------------------------------
-  wire [3:0] pbit_states;
+  wire [5:0] pbit_states;
 
   pbit_array pbits (
     .clk        (clk),
@@ -100,7 +100,7 @@ module tt_um_Rats2012_WobblyBits (
     .states     (pbit_states)
   );
 
-  assign uo_out = {4'b0, pbit_states};
+  assign uo_out = {2'b0, pbit_states};
 
   // uio_in[0]=SPI_CS, [1]=SPI_MOSI, [3]=SPI_SCK used by spi_j_slave.
   // uio_in[2]=MISO input path (MISO is output-only, input path unused).

@@ -3,7 +3,7 @@ project:
   title:        "WobblyBits"
   author:       "Isaac W"
   discord:      ""
-  description:  "A probabilistic computing array: 4–8 p-bits driven by a ring-oscillator TRNG, with a SPI-loaded coupling matrix for Ising/Boltzmann sampling on SKY130."
+  description:  "A probabilistic computing array: 6 p-bits driven by a ring-oscillator TRNG, with a SPI-loaded 6×6 coupling matrix for Ising/Boltzmann sampling on SKY130."
   language:     "Verilog"
   clock_hz:     25000000
 
@@ -42,8 +42,8 @@ pinout:
   uo[3]: "pbit3"
   uo[4]: "pbit4"
   uo[5]: "pbit5"
-  uo[6]: "pbit6"
-  uo[7]: "pbit7"
+  uo[6]: ""
+  uo[7]: ""
 
   # Bidirectional pins
   uio[0]: "SPI_CS"       # SPI chip select (active low)

@@ -6,7 +6,7 @@
  *
  * Protocol: SPI Mode 0 (CPOL=0, CPHA=0), MSB first.
  * Frame: 16 bits per transaction = 8-bit address byte + 8-bit data byte.
- *   addr[3:0] selects the register (0-15 = J[row*4 + col] in row-major order)
+ *   addr[5:0] selects the register (0-35 = J[row*6 + col] in row-major order)
  *   data = 8-bit signed weight to write
  *
  * The SPI inputs are synchronised into the main clock domain with a 2-FF
@@ -30,7 +30,7 @@ module spi_j_slave (
     input  wire       spi_mosi,   // master-out / slave-in
     // Write port (one-cycle pulse; wr_addr is valid only when wr_en=1)
     output reg        wr_en,
-    output reg  [3:0] wr_addr,
+    output reg  [5:0] wr_addr,
     output reg  [7:0] wr_data
 );
 
@@ -64,7 +64,7 @@ module spi_j_slave (
       bit_cnt    <= 4'd0;
       addr_latch <= 8'h00;
       wr_en      <= 1'b0;
-      wr_addr    <= 4'd0;
+      wr_addr    <= 6'd0;
       wr_data    <= 8'h00;
     end else begin
       wr_en <= 1'b0; // default: no write this cycle
@@ -84,7 +84,7 @@ module spi_j_slave (
         end else if (bit_cnt == 4'd15) begin
           // End of data byte: issue write pulse then reset counter
           wr_en   <= 1'b1;
-          wr_addr <= addr_latch[3:0]; // lower 4 bits = register index 0–15
+          wr_addr <= addr_latch[5:0]; // lower 6 bits = register index 0–35
           wr_data <= {shift_reg[6:0], mosi_d};
           bit_cnt <= 4'd0;
         end else begin
