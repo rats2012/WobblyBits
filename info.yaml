@@ -2,7 +2,7 @@
 project:
   title:        "WobblyBits"
   author:       "Isaac W"
-  discord:      ""
+  discord:      "iawev3"
   description:  "A probabilistic computing array: 6 p-bits driven by a ring-oscillator TRNG, with a SPI-loaded 6×6 coupling matrix for Ising/Boltzmann sampling on SKY130."
   language:     "Verilog"
   clock_hz:     25000000

@@ -121,3 +121,7 @@ Ground-state (cut=9) fraction: **44.5%** vs random baseline 3.1%. Only one groun
 
 - **Tiny Tapeout demo board** — RP2040 + MicroPython for SPI loading and output sampling
 - Oscilloscope or logic analyser for watching p-bit fluctuations in real time
+
+## Notes
+
+The TRNG uses ring oscillator structures (neoTRNG, BSD 3-Clause) that are experimental on the SKY130 process. Entropy quality and timing behaviour are not guaranteed. This design is provided for research and educational purposes only.
