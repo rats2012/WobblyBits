@@ -17,18 +17,9 @@ SPI on the `uio` ports of the tiny tapout can be used to load in the J coupling 
 
 Ring oscilators are then used to generate randomness (I pretty much used neoTRNG but ported to verilog), which feeds the states of the P-bit array, which feeds the outputs of the chip (`uo_out[0..5]`) and obviously is used with the J matrix to update the P bit states so we can settle on a solution.
 
-```
-SPI (uio[0..3])
-    ↓
-J coupling matrix  ←─────────────────┐
-(15 × 8-bit signed registers)        │
-    ↓                                │
-neoTRNG (3 ring-osc cells)           │
-    ↓                                │
-P-bit array [0..5]  (Gibbs update) ──┘
-    ↓
-uo_out[5:0]  →  live p-bit states
-```
+### Architecture
+
+![P bit flowchart](/docs/img/p_bit_architecture_monochrome.svg)
 
 **neoTRNG** — three inverter rings (5, 7, 9 inverters) with XOR combining - Thermal jitter should provide the true entropy. [MIT licensed - ported from VHDL](https://github.com/stnolting/neoTRNG).
 

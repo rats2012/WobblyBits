@@ -6,7 +6,7 @@ Together the six p-bits form a small Ising/Boltzmann machine: load a coupling ma
 
 ### Architecture
 
-![P bit flowchart](/img/p_bit_architecture_monochrome.svg)
+![P bit flowchart](/docs/img/p_bit_architecture_monochrome.svg)
 
 #### True random number generator
 
