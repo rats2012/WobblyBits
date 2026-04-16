@@ -17,7 +17,7 @@
  * If CS goes high mid-transaction the state machine resets silently (no
  * partial write: wr_en is only pulsed after all 16 bits are received).
  *
- * Outputs wr_en (one-cycle pulse), wr_addr[3:0], wr_data[7:0].
+ * Outputs wr_en (one-cycle pulse), wr_addr[5:0], wr_data[7:0].
  */
 
 `default_nettype none

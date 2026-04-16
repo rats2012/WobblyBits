@@ -23,8 +23,8 @@ async def test_trng_drives_pbits(dut):
 
     In SIM_MODE the ring oscillators are registered inverters and produce
     TRNG bytes deterministically.  P-bits start at 0 after reset; with
-    ferromagnetic coupling the initial flip probability is 12.5% per TRNG
-    byte, so we wait 2500 clocks (>>8× the expected first-flip latency)
+    ferromagnetic coupling the initial flip probability is ~11% per TRNG
+    byte (thresh=28/256 with K=20), so we wait 2500 clocks (>>8× the expected first-flip latency)
     and verify uo_out[3:0] has changed from its post-reset value of 0.
     Skipped in GL mode — statistical TRNG behaviour is an RTL concern.
     """
@@ -529,8 +529,8 @@ async def test_spi_uncoupled(dut):
     SPI loading: write J=0 for all entries (completely decouple p-bits).
 
     With J=0 every p-bit flips independently at 50/50.  The stationary
-    distribution is uniform over all 16 states, so the aligned fraction
-    (0000 or 1111) should be close to 2/16 = 12.5% — well below the
+    distribution is uniform over all 64 states, so the aligned fraction
+    (000000 or 111111) should be close to 2/64 = 3.1% — well below the
     ferromagnetic default of ~32%.
     """
     dut._log.info("Start — SPI uncoupled J=0 test")
