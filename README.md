@@ -40,10 +40,3 @@ Ring oscillators are then used to generate randomness (I pretty much used neoTRN
 | `uio[2]` | out | `SPI_MISO` (tied 0 — write-only) |
 | `uio[3]` | in | `SPI_SCK` |
 
-
-## A subset of the many amazing resources i used for this project
-
-- [Tiny Tapeout FAQ](https://tinytapeout.com/faq/)
-- [neoTRNG source](https://github.com/stnolting/neoTRNG)
-- [Ising model explanation video](https://www.youtube.com/watch?v=1CCZkHPrhzk)
-
