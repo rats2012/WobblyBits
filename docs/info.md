@@ -4,18 +4,7 @@ WobblyBits is a probabilistic computing chip. It contains **6 p-bits** (probabil
 
 ### Architecture
 
-```
-SPI (uio[0..3])
-    ↓
-J coupling matrix  ←─────────────────┐
-(15 × 8-bit signed registers)        │
-    ↓                                │
-neoTRNG (3 ring-osc cells)           │
-    ↓                                │
-P-bit array [0..5]  (Gibbs update) ──┘
-    ↓
-uo_out[5:0]  →  live p-bit states
-```
+![P bit flowchart](/img/p_bit_architecture_monochrome.svg)
 
 #### True random number generator
 
