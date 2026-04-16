@@ -1,5 +1,5 @@
 /*
- * neoTRNG v3.4 — Verilog port
+ * neoTRNG v3.4 — Verilog port (This was mostly done with ClaudeSonnet 4.6, with some manual clean-up and fixes)
  * Original VHDL: https://github.com/stnolting/neoTRNG
  * BSD 3-Clause License, Copyright (c) 2026 Stephan Nolting. All rights reserved.
  *

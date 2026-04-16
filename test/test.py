@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: © 2026 WobblyBits
+# SPDX-FileCopyrightText: © 2026 Isaac W
 # SPDX-License-Identifier: Apache-2.0
 
 import os
