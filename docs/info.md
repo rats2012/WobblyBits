@@ -3,10 +3,8 @@
 WobblyBits is a probabilistic computing chip. It contains **6 p-bits** (probabilistic bits) that fluctuate randomly between 0 and 1 with a probability controlled by their neighbours.
 
 Together the six p-bits form a small Ising/Boltzmann machine: load a coupling matrix over SPI, release the `run` pin, and the network samples from the encoded probability distribution.
-
 ### Architecture
-
-![P bit flowchart](/docs/img/p_bit_architecture_monochrome.svg)
+<img src="/docs/img/p_bit_architecture_monochrome.svg" width="30%" alt="P bit flowchart" />
 
 #### True random number generator
 

@@ -19,11 +19,11 @@ Ring oscilators are then used to generate randomness (I pretty much used neoTRNG
 
 ### Architecture
 
-![P bit flowchart](/docs/img/p_bit_architecture_monochrome.svg)
+<img src="/docs/img/p_bit_architecture_monochrome.svg" width="50%" alt="P bit flowchart" />
 
 **neoTRNG** — three inverter rings (5, 7, 9 inverters) with XOR combining - Thermal jitter should provide the true entropy. [MIT licensed - ported from VHDL](https://github.com/stnolting/neoTRNG).
 
-**Gibbs update** — each TRNG byte drives one p-bit update in round-robin order. The update rule is `p(s_i=1) = sigmoid(128 + Σ J_ij·(2s_j−1))`, approximated as a threshold comparison against the random byte. The 15 unique coupling weights are 8-bit signed and stored in a compact symmetric register file.
+**Gibbs update** — each TRNG byte drives one p-bit update in round-robin order. The update rule is `p(s_i=1) = sigmoid(128 + Σ J_ij·(2s_j−1))`, approximated as a threshold comparison against the random byte. The 15 coupling weights (J matrix) are 8-bit and stored in a symmetric register (we dont need the diagonal asw as that is 0s).
 
 **SPI interface** — SPI Mode 0, 16-bit frames (`[addr_byte][data_byte]`). `addr[5:0]` selects the matrix entry in row-major order (0–35); symmetric pairs alias the same physical register. Resets to ferromagnetic K=20 so the chip works without any SPI configuration.
 
