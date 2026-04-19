@@ -1,6 +1,6 @@
 # Tiny Tapeout project information
 project:
-  title:        "WobblyBits"
+  title:        "WobblyBits - A probabalistic computing chip"
   author:       "Isaac W"
   discord:      "iawev3"
   description:  "A probabilistic computing array: 6 p-bits driven by a ring-oscillator TRNG, with a SPI-loaded 6×6 coupling matrix for Ising/Boltzmann sampling on SKY130."
@@ -42,13 +42,13 @@ pinout:
   uo[3]: "pbit3"
   uo[4]: "pbit4"
   uo[5]: "pbit5"
-  uo[6]: ""
+  uo[6]: "sweep_done"    # one-cycle pulse on each completed Gibbs sweep (sample-valid strobe)
   uo[7]: ""
 
   # Bidirectional pins
   uio[0]: "SPI_CS"       # SPI chip select (active low)
   uio[1]: "SPI_MOSI"     # SPI data in (J matrix weights)
-  uio[2]: "SPI_MISO"     # SPI data out
+  uio[2]: "SPI_MISO"     # SPI data out; set addr[7]=1 to read back a J register
   uio[3]: "SPI_SCK"      # SPI clock
   uio[4]: ""
   uio[5]: ""
