@@ -25,7 +25,9 @@ Ring oscillators are then used to generate randomness (I pretty much used neoTRN
 
 **Gibbs update** — each TRNG byte drives one p-bit update in round-robin order. The update rule is `p(s_i=1) = sigmoid(128 + Σ J_ij·(2s_j−1))`, approximated as a threshold comparison against the random byte. The 15 coupling weights (J matrix) are 8-bit and stored in a symmetric register (we don't need the diagonal as that is 0s).
 
-**SPI interface** — SPI Mode 0, 16-bit frames (`[addr_byte][data_byte]`). `addr[5:0]` selects the matrix entry in row-major order (0–35); symmetric pairs alias the same physical register. Resets to ferromagnetic K=20 so the chip works without any SPI configuration.
+**SPI interface** — SPI Mode 0, 16-bit frames (`[addr_byte][data_byte]`). `addr[5:0]` selects the matrix entry in row-major order (0–35); symmetric pairs alias the same physical register. `addr[7]` is the R/W̄ flag — set it to 1 to read back a J register over MISO instead of writing. Resets to ferromagnetic K=20 so the chip works without any SPI configuration.
+
+**sweep_done strobe** — `uo[6]` pulses high for one clock cycle each time all six p-bits complete a full Gibbs sweep (every 6 TRNG bytes). Use this as a sample-valid strobe to accumulate a clean histogram on the host without having to track internal timing.
 
 ## Pinout
 
@@ -35,8 +37,9 @@ Ring oscillators are then used to generate randomness (I pretty much used neoTRN
 | `ui[1]` | in | `rand_init` — 1 = seed p-bits from TRNG on rising edge of `run` |
 | `ui[2]` | in | `trng_bypass` — freeze TRNG and updates for more deterministic testing |
 | `uo[5:0]` | out | live p-bit states (`pbit0`–`pbit5`) |
+| `uo[6]` | out | `sweep_done` — one-cycle pulse on each completed Gibbs sweep |
 | `uio[0]` | in | `SPI_CS` (active low) |
 | `uio[1]` | in | `SPI_MOSI` |
-| `uio[2]` | out | `SPI_MISO` (tied 0 — write-only) |
+| `uio[2]` | out | `SPI_MISO` — J register readback (set `addr[7]=1` to read) |
 | `uio[3]` | in | `SPI_SCK` |
 

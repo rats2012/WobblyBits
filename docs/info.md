@@ -49,17 +49,41 @@ Only one register is stored per pair (i,j), reducing storage from 36 to 15 param
 
 #### SPI interface
 
-SPI Mode 0 (CPOL=0, CPHA=0), MSB first. Each transaction is 16 bits: an address byte (`addr[5:0]` = register 0–35) followed by a data byte (8-bit signed weight).
+SPI Mode 0 (CPOL=0, CPHA=0), MSB first. Each transaction is 16 bits: an address byte followed by a data byte.
+
+**Address byte layout:**
+
+| Bits | Field | Description |
+|------|-------|-------------|
+| `addr[7]` | R/W̄ | 0 = write (load J register), 1 = read (return J register on MISO) |
+| `addr[6]` | - | reserved, ignore |
+| `addr[5:0]` | register | matrix entry 0–35 (`6·row + col`, row-major) |
+
+**Write transaction (`addr[7]=0`):** data byte is the 8-bit signed weight to store. Symmetric pairs `J[i][j]` and `J[j][i]` alias the same physical register; either address can be written.
+
+**Read transaction (`addr[7]=1`):** data byte sent by the master is ignored. The slave shifts out the J register value MSB-first on MISO during the data byte. Use the canonical (lower-row) address for reads: e.g. read `J[0][1]` at address 1, not address 6. Transposed addresses return 0.
 
 If CS is deasserted mid-frame the partial transaction is silently discarded. The SPI inputs are double-FF synchronised into the 25 MHz system clock domain, limiting SCK to ≈12 MHz (the RP2040 demo board uses ≤4 MHz).
 
-### Control pins
+### Control and output pins
 
-| Pin | Function |
-|-----|----------|
-| `ui[0]` run | 1 = network running, 0 = paused (p-bit updates frozen) |
-| `ui[1]` rand_init | 1 = seed p-bit states from TRNG on rising edge of `run` |
-| `ui[2]` trng_bypass | 1 = freeze TRNG and p-bit updates (deterministic simulation) |
+| Pin | Direction | Function |
+|-----|-----------|----------|
+| `ui[0]` run | in | 1 = network running, 0 = paused (p-bit updates frozen) |
+| `ui[1]` rand_init | in | 1 = seed p-bit states from TRNG on rising edge of `run` |
+| `ui[2]` trng_bypass | in | 1 = freeze TRNG and p-bit updates (deterministic simulation) |
+| `uo[5:0]` | out | live p-bit states (`pbit0`–`pbit5`) |
+| `uo[6]` sweep_done | out | one-cycle pulse on each completed Gibbs sweep (see below) |
+| `uio[0]` SPI_CS | in | SPI chip select (active low) |
+| `uio[1]` SPI_MOSI | in | SPI data in |
+| `uio[2]` SPI_MISO | out | SPI data out (J register readback) |
+| `uio[3]` SPI_SCK | in | SPI clock |
+
+#### sweep_done strobe
+
+`uo[6]` pulses high for exactly one clock cycle each time all six p-bits have completed one full Gibbs sweep (i.e. when the internal round-robin index wraps from 5 back to 0 on a normal update). It does not assert during the `rand_init` seed byte.
+
+The intended use is as a sample-valid strobe: latch `uo[5:0]` on the rising edge of `uo[6]` to accumulate a histogram of states.
 
 ### Sampling behaviour
 
@@ -83,14 +107,27 @@ Low-energy states appear most frequently during long observation windows.
 
 1. Power on with `ui[0]` (run) = 0
 2. Load coupling weights via SPI (send `[addr, weight]` byte pairs for each `J[i][j]` entry you want to set)
-3. Deassert SPI CS, then assert `ui[0]` = 1 to start the network
-4. Sample `uo_out[5:0]` (the p bit states) repeatedly.
+3. Optionally verify the matrix loaded correctly: read back a few registers using `addr[7]=1` (see SPI read protocol above)
+4. Deassert SPI CS, then assert `ui[0]` = 1 to start the network
+5. Sample `uo[5:0]` (p-bit states) on each rising edge of `uo[6]` (`sweep_done`) to accumulate a histogram of sweep-aligned samples
 
 ### No-config smoke test
 
-Without any SPI write, the chip resets to ferromagnetic K=20. Assert `run` and observe `uo_out[5:0]`.
+Without any SPI write, the chip resets to ferromagnetic K=20. Assert `run` and observe `uo[5:0]` toggling on each `sweep_done` pulse.
 
-I expect you should see correlated random fluctuations - all six bits tend to be in the same state (0 or 1) but occasionally flip together. This confirms TRNG → p-bit datapath is working.
+You should see correlated random fluctuations - all six bits tend to be in the same state (0 or 1) but occasionally flip together. This confirms the TRNG → p-bit datapath is working.
+
+### SPI readback verification
+
+Before starting the network, confirm the J matrix loaded correctly. To read `J[row][col]` set `addr[7]=1` and use the canonical (lower-row) address:
+
+```
+addr = 0x80 | (row * 6 + col)   where row < col
+```
+
+The slave shifts the 8-bit signed value MSB-first on MISO during the data byte. The master's data byte is ignored. Example: to read `J[0][1]` send `[0x81, 0x00]` and capture MISO.
+
+After reset all off-diagonal registers read back `+20` (ferromagnetic default).
 
 ### TRNG quality check
 
