@@ -101,27 +101,30 @@ module pbit_array (
   end
 
   // ---- Combinatorial J register read (for SPI MISO readback) ---------------
-  // Mirrors the symmetric aliasing of the write case statement exactly.
-  // Returns 0 for diagonal addresses (always 0) and out-of-range addresses.
+  // "real" addresses only (lower-index address of each symmetric pair).
+  // Reading via the transposed address (e.g. J[1][0] instead of J[0][1])
+  // returns 0 — use the lower-row address for reads.  This halves the decoder
+  // logic relative to a full 30-entry alias map, saving area.
+  // Diagonal and out-of-range addresses return 0.
   reg signed [7:0] rd_data_r;
   always @(*) begin
     case (rd_addr)
-      6'd1,  6'd6:  rd_data_r = j_01;
-      6'd2,  6'd12: rd_data_r = j_02;
-      6'd3,  6'd18: rd_data_r = j_03;
-      6'd4,  6'd24: rd_data_r = j_04;
-      6'd5,  6'd30: rd_data_r = j_05;
-      6'd8,  6'd13: rd_data_r = j_12;
-      6'd9,  6'd19: rd_data_r = j_13;
-      6'd10, 6'd25: rd_data_r = j_14;
-      6'd11, 6'd31: rd_data_r = j_15;
-      6'd15, 6'd20: rd_data_r = j_23;
-      6'd16, 6'd26: rd_data_r = j_24;
-      6'd17, 6'd32: rd_data_r = j_25;
-      6'd22, 6'd27: rd_data_r = j_34;
-      6'd23, 6'd33: rd_data_r = j_35;
-      6'd29, 6'd34: rd_data_r = j_45;
-      default:      rd_data_r = 8'h00; // diagonal (hardwired 0) or out-of-range
+      6'd1:  rd_data_r = j_01;  // J[0][1]
+      6'd2:  rd_data_r = j_02;  // J[0][2]
+      6'd3:  rd_data_r = j_03;  // J[0][3]
+      6'd4:  rd_data_r = j_04;  // J[0][4]
+      6'd5:  rd_data_r = j_05;  // J[0][5]
+      6'd8:  rd_data_r = j_12;  // J[1][2]
+      6'd9:  rd_data_r = j_13;  // J[1][3]
+      6'd10: rd_data_r = j_14;  // J[1][4]
+      6'd11: rd_data_r = j_15;  // J[1][5]
+      6'd15: rd_data_r = j_23;  // J[2][3]
+      6'd16: rd_data_r = j_24;  // J[2][4]
+      6'd17: rd_data_r = j_25;  // J[2][5]
+      6'd22: rd_data_r = j_34;  // J[3][4]
+      6'd23: rd_data_r = j_35;  // J[3][5]
+      6'd29: rd_data_r = j_45;  // J[4][5]
+      default: rd_data_r = 8'h00;
     endcase
   end
   assign rd_data = rd_data_r;
