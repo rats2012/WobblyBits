@@ -36,11 +36,12 @@ $$
 
 The linear approximation saturates at $ |net| > 127 $.
 
-#### J coupling matrix
-
-![Coupling Matrix register map](img/CouplingMatrix.jpg)
+#### Coupling matrix
 
 The 6×6 coupling matrix has 15 unique off-diagonal entries (the matrix is symmetric; diagonal is 0). These are stored as 8-bit signed registers and accessible via SPI using row-major addressing (`addr = 6·row + col`).
+
+![Coupling Matrix register map](img/CouplingMatrix.jpg){width=60%}
+
 
 Writing either `J[i][j]` or `J[j][i]` updates the same physical register.
 
