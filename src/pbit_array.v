@@ -34,6 +34,12 @@
  *   seed_done is cleared when run=0 so each new run=1 assertion gets a fresh
  *   seed.
  *
+ * sweep_done output:
+ *   Pulses high for exactly one clock cycle each time all six p-bits have
+ *   completed one full Gibbs sweep (i.e. when upd_idx wraps 5 → 0 on a
+ *   normal update).  Not asserted during rand_init seeding.
+ *   Connect to uo_out[6] for host-side histogram accumulation.
+ *
  * Cell cost estimate: dominated by the J store and its muxing.
  */
 
@@ -53,7 +59,8 @@ module pbit_array (
     // SPI read port — combinatorial J register lookup for MISO readback
     input  wire  [5:0] rd_addr,  // register address from spi_j_slave (combinatorial)
     output wire  [7:0] rd_data,  // J register value (combinatorial mux)
-    output reg   [5:0] states
+    output reg   [5:0] states,
+    output reg         sweep_done  // one-cycle pulse on each completed Gibbs sweep
 );
 
   // ---- J coupling matrix register file ------------------------------------
@@ -208,10 +215,12 @@ module pbit_array (
   // seed_done is cleared whenever run=0 so each new run=1 assertion can seed.
   always @(posedge clk or negedge rst_n) begin
     if (!rst_n) begin
-      states    <= 6'b0;
-      upd_idx   <= 3'd0;
-      seed_done <= 1'b0;
+      states     <= 6'b0;
+      upd_idx    <= 3'd0;
+      seed_done  <= 1'b0;
+      sweep_done <= 1'b0;
     end else begin
+      sweep_done <= 1'b0; // default: deassert every cycle
       if (!run) begin
         seed_done <= 1'b0;
       end else if (run && trng_valid) begin
@@ -222,7 +231,12 @@ module pbit_array (
         end else begin
           // Normal Gibbs update.
           states[upd_idx] <= (trng_data < thresh) ? 1'b1 : 1'b0;
-          upd_idx <= (upd_idx == 3'd5) ? 3'd0 : upd_idx + 3'd1;
+          if (upd_idx == 3'd5) begin
+            upd_idx    <= 3'd0;
+            sweep_done <= 1'b1; // pulse: all 6 p-bits have been updated
+          end else begin
+            upd_idx <= upd_idx + 3'd1;
+          end
         end
       end
     end

@@ -17,7 +17,8 @@
  *   uio[2]    — SPI_MISO    (output; J register readback — addr byte bit 7 = 1)
  *   uio[3]    — SPI_SCK     (input)
  *   uo_out[5:0] — live p-bit states (pbit0–pbit5)
- *   uo_out[7:6] — reserved (tied 0)
+ *   uo_out[6]   — sweep_done: one-cycle pulse each time all 6 p-bits complete a Gibbs sweep
+ *   uo_out[7]   — reserved (tied 0)
  *
  * SPI loading (before asserting run):
  *   Send 16-bit frames [addr_byte][data_byte].
@@ -103,6 +104,7 @@ module tt_um_Rats2012_WobblyBits (
 
   // ---- P-bit array ---------------------------------------------------------
   wire [5:0] pbit_states;
+  wire       sweep_done;
 
   pbit_array pbits (
     .clk        (clk),
@@ -116,10 +118,11 @@ module tt_um_Rats2012_WobblyBits (
     .wr_data    (spi_wr_data),
     .rd_addr    (spi_rd_addr), // combinatorial address from spi_j_slave
     .rd_data    (spi_rd_data), // combinatorial J register value → spi_j_slave
-    .states     (pbit_states)
+    .states     (pbit_states),
+    .sweep_done (sweep_done)   // one-cycle pulse per completed Gibbs sweep → uo_out[6]
   );
 
-  assign uo_out = {2'b0, pbit_states};
+  assign uo_out = {1'b0, sweep_done, pbit_states};
 
   // uio_in[0]=SPI_CS, [1]=SPI_MOSI, [3]=SPI_SCK used by spi_j_slave.
   // uio_in[2]=MISO input path (MISO is output-only, input path unused).
