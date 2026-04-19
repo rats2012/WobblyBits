@@ -6,31 +6,39 @@ Together the six p-bits form a small Ising/Boltzmann machine: load a coupling ma
 
 ### Architecture
 
-![P bit flowchart](img/p_bit_architecture_monochrome.svg){width=40%}
+![Overview](img/ArchitectureOverview.jpg)
 
 #### True random number generator
 
-Hardware randomness comes from the [neoTRNG](https://github.com/stnolting/neoTRNG) core — three inverter rings of 5, 7, and 9 stages with XOR combining.
+Hardware entropy is provided by the [neoTRNG](https://github.com/stnolting/neoTRNG) core using three inverter rings (5/7/9 stages XOR-combined).
 
-I intend for thermal jitter in the ring oscillation frequencies to provide entropy. The TRNG outputs a fresh random byte whenever `valid_o` pulses; that byte drives the next p-bit update.
-
-#### P-bit update rule (sequential Gibbs sampling)
-
-Each TRNG byte triggers one p-bit update in round-robin order (pbit0 → pbit1 → … → pbit5 → pbit0 …).
+Each TRNG byte updates one p-bit in round-robin order.
 
 The update rule is a hardware approximation of the sigmoid:
 
-```
-net_i   = Σ_{j≠i} J[i][j] · (2·s_j − 1)   (±1 spin convention)
-thresh  = clamp(128 + net_i, 0, 255)
-s_i_new = (trng_byte < thresh) ? 1 : 0
-```
+$$
+\text{net}*i = \sum*{j \ne i} J[i][j],(2s_j - 1)
+$$
 
-`thresh` maps the net field linearly into a probability: `net=0` gives 50/50 fluctuation, positive net biases toward 1, negative toward 0.
+$$
+\text{thresh} = \operatorname{clamp}(128 + \text{net}_i,; 0,; 255)
+$$
 
-The linear approximation saturates at `|net| > 127`.
+$$
+s_i^{\text{new}} =
+\begin{cases}
+1 & \text{if } \text{trng_byte} < \text{thresh} \
+0 & \text{otherwise}
+\end{cases}
+$$
+
+`thresh` maps the net field linearly into a probability: `net=0` gives 50/50 probability. Positive values bias toward 1; negative toward 0.
+
+The linear approximation saturates at $ |net| > 127 $.
 
 #### J coupling matrix
+
+![Coupling Matrix register map](img/CouplingMatrix.jpg)
 
 The 6×6 coupling matrix has 15 unique off-diagonal entries (the matrix is symmetric; diagonal is 0). These are stored as 8-bit signed registers and accessible via SPI using row-major addressing (`addr = 6·row + col`).
 
@@ -54,39 +62,48 @@ If CS is deasserted mid-frame the partial transaction is silently discarded. The
 | `ui[1]` rand_init | 1 = seed p-bit states from TRNG on rising edge of `run` |
 | `ui[2]` trng_bypass | 1 = freeze TRNG and p-bit updates (deterministic simulation) |
 
-### Boltzmann sampling
+### Sampling behaviour
 
-With suitable J values the stationary distribution of the Markov chain converges to the Boltzmann distribution $P(s) \propto \exp(-E(s)/T)$ where the energy is the Ising Hamiltonian $E = -\sum_{i<j} J_{ij} s_i s_j$ and the effective temperature is set by the TRNG noise level.
 
-Sampling the output long enough recovers the full distribution; the most-visited states are the lowest-energy (ground) states.
+The network approximates Boltzmann sampling:
+
+$$
+P(s) \propto \exp(-E(s)/T)
+$$
+
+with energy
+
+$$
+E = -\sum_{i<j} J_{ij}s_is_j
+$$
+
+Low-energy states appear most frequently during long observation windows.
 
 ## How to test
 ### Bring up steps
 
 1. Power on with `ui[0]` (run) = 0
-2. Load coupling weights via SPI — send `[addr, weight]` byte pairs for each `J[i][j]` entry you want to set
+2. Load coupling weights via SPI (send `[addr, weight]` byte pairs for each `J[i][j]` entry you want to set)
 3. Deassert SPI CS, then assert `ui[0]` = 1 to start the network
-4. Sample `uo_out[5:0]` repeatedly — this is the live 6-bit p-bit state vector
+4. Sample `uo_out[5:0]` (the p bit states) repeatedly.
 
 ### No-config smoke test
 
 Without any SPI write, the chip resets to ferromagnetic K=20. Assert `run` and observe `uo_out[5:0]`.
 
-I expect you should see correlated random fluctuations — all six bits tend to be in the same state (0 or 1) but occasionally flip together. This confirms TRNG → p-bit datapath is working.
+I expect you should see correlated random fluctuations - all six bits tend to be in the same state (0 or 1) but occasionally flip together. This confirms TRNG → p-bit datapath is working.
 
 ### TRNG quality check
 
-Set J=0 for all entries (fully uncoupled) via SPI. Each p-bit now fluctuates independently at 50/50.
+Set J=0 for all entries (fully uncoupled) via SPI. Each p-bit now should fluctuate independently at 50/50.
 
 ### TRNG bypass (deterministic simulation)
 
 Assert `ui[2]` = 1 to freeze all updates. Output holds its last value indefinitely. Release to resume.
 
-I feel that this will be usefull for debugging
-
 ### Ising ground-state test (ferromagnetic)
 
-With default K=20, after sufficient warm-up (a few thousand clock cycles) the network should spend noticeably more time in the all-0 or all-1 states than in mixed states — those are the ferromagnetic ground states.
+With default K=20, after sufficient warm-up (a few thousand clock cycles) the network should spend noticeably more time in the all-0 or all-1 states than in mixed states - these are the ferromagnetic ground states.
 
 For stronger alignment: load K=40 via SPI (addr pairs for all 30 off-diagonal positions). With K=40 the all-aligned probability is greater.
 
@@ -110,4 +127,4 @@ Ground-state (cut=9) fraction: **44.5%** vs random baseline 3.1%. Only one groun
 
 ## Notes
 
-The TRNG uses ring oscillator structures (neoTRNG, BSD 3-Clause) that are experimental on the SKY130 process. Entropy quality and timing behaviour are not guaranteed. This design is provided for research and educational purposes only.
+The TRNG uses ring oscillator structures that are experimental and have not been tested in hardware. Timing behaviour is not guaranteed.
