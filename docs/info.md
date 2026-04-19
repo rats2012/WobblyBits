@@ -17,17 +17,15 @@ Each TRNG byte updates one p-bit in round-robin order.
 The update rule is a hardware approximation of the sigmoid:
 
 $$
-\text{net}*i = \sum*{j \ne i} J[i][j],(2s_j - 1)
+\text{net}_i = \sum_{j \neq i} J[i][j] \cdot (2s_j - 1)
 $$
-
 $$
-\text{thresh} = \operatorname{clamp}(128 + \text{net}_i,; 0,; 255)
+\text{thresh} = \operatorname{clamp}(128 + \text{net}_i,\ 0,\ 255)
 $$
-
 $$
 s_i^{\text{new}} =
 \begin{cases}
-1 & \text{if } \text{trng_byte} < \text{thresh} \
+1 & \text{if } \texttt{trng\_byte} < \text{thresh} \\
 0 & \text{otherwise}
 \end{cases}
 $$
@@ -106,7 +104,7 @@ Assert `ui[2]` = 1 to freeze all updates. Output holds its last value indefinite
 
 With default K=20, after sufficient warm-up (a few thousand clock cycles) the network should spend noticeably more time in the all-0 or all-1 states than in mixed states - these are the ferromagnetic ground states.
 
-For stronger alignment: load K=40 via SPI (addr pairs for all 30 off-diagonal positions). With K=40 the all-aligned probability is greater.
+For stronger alignment: load K=40 via SPI. With K=40 the all-aligned probability is greater.
 
 ### MAX-CUT demo
 
