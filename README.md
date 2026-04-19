@@ -19,9 +19,9 @@ Ring oscillators are then used to generate randomness (I pretty much used neoTRN
 
 ### Architecture
 
-<img src="/docs/img/p_bit_architecture_monochrome.svg" width="45%" alt="P bit flowchart" />
+<img src="/docs/img/ArchitectureOverview.jpg" width="45%" alt="Architecutre Overview" />
 
-**neoTRNG** — three inverter rings (5, 7, 9 inverters) with XOR combining - Thermal jitter should provide the entropy. [neoTRNG - ported from VHDL](https://github.com/stnolting/neoTRNG).
+**neoTRNG** — three inverter rings (5, 7, 9 inverters) with XOR combining - Thermal jitter should provide the true entropy. [neoTRNG - ported from VHDL](https://github.com/stnolting/neoTRNG).
 
 **Gibbs update** — each TRNG byte drives one p-bit update in round-robin order. The update rule is `p(s_i=1) = sigmoid(128 + Σ J_ij·(2s_j−1))`, approximated as a threshold comparison against the random byte. The 15 coupling weights (J matrix) are 8-bit and stored in a symmetric register (we don't need the diagonal as that is 0s).
 
