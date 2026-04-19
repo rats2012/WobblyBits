@@ -613,6 +613,8 @@ async def test_gl_reset_contract(dut):
     dut.uio_in.value = _SPI_IDLE
     await ClockCycles(dut.clk, 2)
 
+    # uio_out[2] = MISO.  After reset CS is deasserted (uio_in[0]=1 via _SPI_IDLE)
+    # so is_read=0 and miso_sreg=0, making MISO=0 and uio_out=0x00.
     assert int(dut.uo_out.value)  == 0x00, \
         f"uo_out  after reset: expected 0x00, got {int(dut.uo_out.value):#04x}"
     assert int(dut.uio_out.value) == 0x00, \
@@ -770,3 +772,118 @@ async def test_gl_spi_cs_abort_no_commit(dut):
         assert False, \
             f"uo_out[0] never went high within {TIMEOUT_GL} cycles after abort+good-write " \
             f"(uo_out={int(dut.uo_out.value):#04x}) — aborted frame may have corrupted J registers"
+
+
+# ---------------------------------------------------------------------------
+# SPI MISO readback tests
+# ---------------------------------------------------------------------------
+
+async def _spi_read_j(dut, row, col, sck_half=None):
+    """
+    Perform a SPI read of J[row][col] and return the signed 8-bit value.
+
+    Protocol: send 16-bit frame with addr byte bit 7 = 1 (read flag).
+    During the data byte the slave shifts out the J register MSB-first on
+    MISO (uio_out[2]).
+
+    Sampling strategy: MISO is sampled at the end of each SCK LOW phase
+    (before the next SCK rise).  Because the 2-FF synchroniser introduces
+    ~2 sysclk cycles of latency from the physical SCK edge, MISO is fully
+    settled by then provided sck_half >= 3.  The default sck_half=8 gives
+    plenty of margin.
+
+    Bit ordering: the slave loads miso_sreg = rd_data after the address byte
+    and shifts left on each subsequent SCK rise, so bit 7 (MSB) appears on
+    MISO first during the data byte.
+    """
+    if sck_half is None:
+        sck_half = 8  # not used in GL mode (test is skipped)
+    addr = ((row * 6 + col) & 0x3F) | 0x80  # set bit 7 = R flag
+
+    read_byte = 0
+
+    # CS low — begin transaction
+    dut.uio_in.value = 0x00
+    await ClockCycles(dut.clk, 4)
+
+    # Address byte (MSB first, R/W̄=1 in bit 7)
+    for bit_idx in range(7, -1, -1):
+        mosi_bit = (addr >> bit_idx) & 1
+        dut.uio_in.value = mosi_bit * _SPI_MOSI          # SCK low
+        await ClockCycles(dut.clk, sck_half)
+        dut.uio_in.value = (mosi_bit * _SPI_MOSI) | _SPI_SCK  # SCK high
+        await ClockCycles(dut.clk, sck_half)
+    # After the last address SCK rise: slave latches addr, loads miso_sreg = rd_data.
+    # The 2-FF sync means MISO is settled within 2 sysclk cycles.
+
+    # Data byte: sample MISO during SCK low, then drive SCK high.
+    # MISO bit N is valid during the Nth SCK low phase (set by the previous SCK rise).
+    for bit_idx in range(7, -1, -1):
+        dut.uio_in.value = 0x00                # SCK low; MISO settling
+        await ClockCycles(dut.clk, sck_half)   # wait for sync latency to clear
+        miso_bit = (int(dut.uio_out.value) >> 2) & 1  # uio[2] = MISO
+        read_byte = (read_byte << 1) | miso_bit
+        dut.uio_in.value = _SPI_SCK            # SCK high — slave shifts miso_sreg
+        await ClockCycles(dut.clk, sck_half)
+
+    dut.uio_in.value = 0x00
+    await ClockCycles(dut.clk, 4)
+    dut.uio_in.value = _SPI_IDLE
+    await ClockCycles(dut.clk, 8)
+
+    # Convert unsigned byte to signed
+    return read_byte if read_byte < 128 else read_byte - 256
+
+
+@cocotb.test(skip=GL_TEST)  # MISO shift-out timing is an RTL concern
+async def test_spi_miso_readback(dut):
+    """
+    SPI MISO readback: write a J register then read it back and verify.
+
+    Test sequence:
+      1. Reset (J regs → ferromagnetic K=20 default).
+      2. Read back J[0][1]: expect +20 (reset default).
+      3. Write J[0][1] = +55, read back: expect +55.
+      4. Write J[2][4] = -33 (a different register), read back: expect -33.
+      5. Read J[4][2] (the symmetric alias of J[2][4]): expect -33.
+      6. Read a diagonal entry J[3][3] (addr=21): expect 0 (hardwired).
+
+    The test exercises positive values, negative (two's-complement) values,
+    and the symmetric alias read path.
+    """
+    dut._log.info("Start — SPI MISO readback test")
+    clock = Clock(dut.clk, 40, unit="ns")
+    cocotb.start_soon(clock.start())
+
+    await _do_reset(dut)
+    dut.uio_in.value = _SPI_IDLE
+    dut.ui_in.value  = 0b000  # run=0 (keep network paused during SPI)
+
+    # 1. Reset default: J[0][1] should be +20
+    val = await _spi_read_j(dut, 0, 1)
+    dut._log.info(f"J[0][1] after reset = {val}")
+    assert val == 20, f"Expected reset default J[0][1]=+20, got {val}"
+
+    # 2. Write +55 to J[0][1], read back via primary address
+    await _spi_write_j(dut, 0, 1, 55)
+    val = await _spi_read_j(dut, 0, 1)
+    dut._log.info(f"J[0][1] after write +55 = {val}")
+    assert val == 55, f"Expected J[0][1]=+55 after write, got {val}"
+
+    # 3. Write -33 to J[2][4], read back via primary address
+    await _spi_write_j(dut, 2, 4, -33)
+    val = await _spi_read_j(dut, 2, 4)
+    dut._log.info(f"J[2][4] after write -33 = {val}")
+    assert val == -33, f"Expected J[2][4]=-33 after write, got {val}"
+
+    # 4. Read J[4][2] — symmetric alias, must return same value as J[2][4]
+    val = await _spi_read_j(dut, 4, 2)
+    dut._log.info(f"J[4][2] (alias of J[2][4]) = {val}")
+    assert val == -33, f"Expected symmetric alias J[4][2]=-33, got {val}"
+
+    # 5. Diagonal entry J[3][3] (addr=21): hardwired to 0, read must return 0
+    val = await _spi_read_j(dut, 3, 3)
+    dut._log.info(f"J[3][3] (diagonal) = {val}")
+    assert val == 0, f"Expected diagonal J[3][3]=0, got {val}"
+
+    dut._log.info("MISO readback test passed")

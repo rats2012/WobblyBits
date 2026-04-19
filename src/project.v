@@ -14,7 +14,7 @@
  *   ui_in[2]  — trng_bypass (1 = freeze TRNG and p-bit updates for deterministic sim)
  *   uio[0]    — SPI_CS      (input, active low)
  *   uio[1]    — SPI_MOSI    (input)
- *   uio[2]    — SPI_MISO    (output, tied 0 — write-only for now)
+ *   uio[2]    — SPI_MISO    (output; J register readback — addr byte bit 7 = 1)
  *   uio[3]    — SPI_SCK     (input)
  *   uo_out[5:0] — live p-bit states (pbit0–pbit5)
  *   uo_out[7:6] — reserved (tied 0)
@@ -59,7 +59,10 @@ module tt_um_Rats2012_WobblyBits (
   wire trng_en = ~ui_in[2];
 
   // MISO (uio[2]) is the only output; all other bidir pins are inputs.
-  assign uio_out = 8'h00;  // MISO tied 0 (write-only SPI)
+  wire [5:0] spi_rd_addr;
+  wire [7:0] spi_rd_data;
+  wire       spi_miso;
+  assign uio_out = {5'b0, spi_miso, 2'b0};  // uio[2] = MISO (J register readback)
   assign uio_oe  = 8'b0000_0100; // uio[2] = MISO as output
 
   // ---- TRNG ----------------------------------------------------------------
@@ -90,6 +93,9 @@ module tt_um_Rats2012_WobblyBits (
     .spi_cs_n (uio_in[0]),   // CS   active low
     .spi_mosi (uio_in[1]),   // MOSI data in
     .spi_sck  (uio_in[3]),   // SCK  serial clock
+    .rd_data  (spi_rd_data), // J register value from pbit_array (combinatorial)
+    .rd_addr  (spi_rd_addr), // register address to look up (combinatorial)
+    .miso_out (spi_miso),    // MISO → uio_out[2]
     .wr_en    (spi_wr_en),
     .wr_addr  (spi_wr_addr),
     .wr_data  (spi_wr_data)
@@ -108,6 +114,8 @@ module tt_um_Rats2012_WobblyBits (
     .wr_en      (spi_wr_en),
     .wr_addr    (spi_wr_addr),
     .wr_data    (spi_wr_data),
+    .rd_addr    (spi_rd_addr), // combinatorial address from spi_j_slave
+    .rd_data    (spi_rd_data), // combinatorial J register value → spi_j_slave
     .states     (pbit_states)
   );
 

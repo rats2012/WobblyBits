@@ -50,6 +50,9 @@ module pbit_array (
     input  wire        wr_en,
     input  wire  [5:0] wr_addr,
     input  wire  [7:0] wr_data,
+    // SPI read port — combinatorial J register lookup for MISO readback
+    input  wire  [5:0] rd_addr,  // register address from spi_j_slave (combinatorial)
+    output wire  [7:0] rd_data,  // J register value (combinatorial mux)
     output reg   [5:0] states
 );
 
@@ -96,6 +99,32 @@ module pbit_array (
       endcase
     end
   end
+
+  // ---- Combinatorial J register read (for SPI MISO readback) ---------------
+  // Mirrors the symmetric aliasing of the write case statement exactly.
+  // Returns 0 for diagonal addresses (always 0) and out-of-range addresses.
+  reg signed [7:0] rd_data_r;
+  always @(*) begin
+    case (rd_addr)
+      6'd1,  6'd6:  rd_data_r = j_01;
+      6'd2,  6'd12: rd_data_r = j_02;
+      6'd3,  6'd18: rd_data_r = j_03;
+      6'd4,  6'd24: rd_data_r = j_04;
+      6'd5,  6'd30: rd_data_r = j_05;
+      6'd8,  6'd13: rd_data_r = j_12;
+      6'd9,  6'd19: rd_data_r = j_13;
+      6'd10, 6'd25: rd_data_r = j_14;
+      6'd11, 6'd31: rd_data_r = j_15;
+      6'd15, 6'd20: rd_data_r = j_23;
+      6'd16, 6'd26: rd_data_r = j_24;
+      6'd17, 6'd32: rd_data_r = j_25;
+      6'd22, 6'd27: rd_data_r = j_34;
+      6'd23, 6'd33: rd_data_r = j_35;
+      6'd29, 6'd34: rd_data_r = j_45;
+      default:      rd_data_r = 8'h00; // diagonal (hardwired 0) or out-of-range
+    endcase
+  end
+  assign rd_data = rd_data_r;
 
   // ---- Round-robin update index + rand_init seed tracking ----------------
   reg [2:0] upd_idx;
