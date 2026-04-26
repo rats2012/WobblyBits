@@ -1,9 +1,9 @@
 # Tiny Tapeout project information
 project:
-  title:        "WobblyBits - A probabalistic computing chip"
+  title:        "WobblyBits - A probabilistic computing chip"
   author:       "Isaac W"
   discord:      "iawev3"
-  description:  "A probabilistic computing array: 6 p-bits driven by a ring-oscillator TRNG, with a SPI-loaded 6×6 coupling matrix for Ising/Boltzmann sampling on SKY130."
+  description:  "A probabilistic computing array: 6 p-bits driven by a ring-oscillator TRNG, with a SPI-loadable 6x6 coupling matrix for Ising/Boltzmann sampling on SKY130."
   language:     "Verilog"
   clock_hz:     25000000
 

@@ -317,8 +317,9 @@ async def test_max_cut_k33_bipartite(dut):
     Note on symmetry breaking:
       The two ground states (000111 and 111000) are degenerate but separated by a
       high energy barrier (~9×2×J=720 in coupling units). With rand_init=0 (default),
-      hardware reset initialises states=000000 and the chain always falls into the
-      000111 basin first; 111000 is never observed in a single run.
+      hardware reset initialises states=000000; which ground state the chain enters
+      depends on TRNG timing and the 2000-cycle warmup — a single run will lock into
+      one basin and rarely escape (the RTL sample run in info.md shows 111000 dominant).
       With rand_init=1 (ui_in[1]=1), states are seeded from the TRNG on the rising
       edge of run, so independent trials land in different basins.  On real hardware
       this means running twice with rand_init=1 will reliably find both ground states.
@@ -482,7 +483,7 @@ async def _load_j_matrix(dut, k):
 @cocotb.test()  # GL: SPI wiring check only; statistical assertions skipped in GL mode
 async def test_spi_strong_ferromagnet(dut):
     """
-    SPI loading: write K=40 (stronger coupling than reset default K=8).
+    SPI loading: write K=40 (stronger coupling than reset default K=20).
 
     With K=40, thresh for a fully-aligned neighbourhood is 128+5*40=328→255 (saturated),
     making the ground states (all-0, all-1) extremely stable.  We expect
@@ -492,7 +493,7 @@ async def test_spi_strong_ferromagnet(dut):
     clock = Clock(dut.clk, 40, unit="ns")
     cocotb.start_soon(clock.start())
 
-    # Reset (j_reg → ferromagnetic K=32 defaults, states → 0)
+    # Reset (j_reg → ferromagnetic K=20 defaults, states → 0)
     await _do_reset(dut)
     dut.uio_in.value = _SPI_IDLE
 
@@ -914,7 +915,9 @@ async def test_spi_miso_readback(dut):
       2. Read back J[0][1]: expect +20 (reset default).
       3. Write J[0][1] = +55, read back: expect +55.
       4. Write J[2][4] = -33 (a different register), read back: expect -33.
-      5. Read J[4][2] (the symmetric alias of J[2][4]): expect -33.
+      5. Re-read J[2][4] via canonical address to confirm value is stable: expect -33.
+         Note: transposed alias J[4][2] (addr=26) is intentionally not in the read
+         mux and returns 0 — use the lower-row address for reads (documented).
       6. Read a diagonal entry J[3][3] (addr=21): expect 0 (hardwired).
 
     The test exercises positive values, negative (two's-complement) values,
