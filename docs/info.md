@@ -160,7 +160,3 @@ These were the RTL results for MAX-CUT K₃,₃ (1000 samples, `rand_init=0`):
 | others | 251   | 25.1% | ≤5  |
 
 Ground-state (cut=9) fraction: **44.5%** vs random baseline 3.1%. Only one ground state observed per run due to symmetry breaking — use `rand_init=1` to explore both basins.
-
-## Notes
-
-The TRNG uses ring oscillator structures that are experimental and have not been tested in hardware. Timing behaviour is not guaranteed.
